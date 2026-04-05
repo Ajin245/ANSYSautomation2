@@ -1,0 +1,56 @@
+// project_settings.json
+{
+  "project": {
+    "name": "Типовая опорная конструкция",
+    "version": "2.2",
+    "description": "Автоматизированная настройка расчетов опорных конструкций"
+  },
+  "execution": {
+    "name_pattern": "(\d{2}-\d{2}-[Ff]\d)",
+    "default_execution": "05-50-F2",
+    "validation": {
+      "require_bolt_ns": true,
+      "min_bolts_count": 1
+    }
+  },
+  "boundary_conditions": {
+    "fixed_support": "gu_fixed",
+    "displacement": "gu_disp",
+    "remote_displacement": "gu_remote_disp",
+    "remote_force": "gu_remote_f",
+    "frictionless_support": "gu_frictionless",
+    "compression_only": "gu_compression"
+  },
+  "loads": {
+    "force": "gu_force",
+    "moment": "gu_moment", 
+    "pressure": "gu_pressure",
+    "bearing": "gu_bearing",
+    "remote_force": "gu_remote_f",
+    "bolt_pattern": "gu_bolt*_f",
+    "temperature": "gu_temperature"
+  },
+  "mesh_settings": {
+    "default_element_order": "Linear",
+    "result_keywords": ["shov", "bolt", "opora", "truba", "osnovanie", "flanec", "korp", "rebro", "podoporka","opora_verh","opora_niz",],
+    "exclude_patterns": ["gu_*"],
+    "sweep_algorithm": "Axisymmetric"
+  },
+  "solution_settings": {
+    "newton_raphson_residuals": 4,
+    "identify_element_violations": 4,
+    "default_results": ["Total Deformation"],
+    "stress_results": {
+      "shov": "Maximum Shear Stress",
+      "default": "Stress Intensity"
+    },
+    "stress_averaging": "ElementalMean"
+  },
+  "units": {
+    "force": "N",
+    "moment": "N·mm", 
+    "pressure": "MPa",
+    "length": "mm",
+    "time": "s"
+  }
+}

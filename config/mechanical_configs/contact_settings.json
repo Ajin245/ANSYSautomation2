@@ -1,0 +1,36 @@
+{
+  "contact_settings": {
+    "shov": {
+      "type": "Bonded",
+      "interface_treatment": "AdjustToTouch"
+    },
+    "truba_shponka": {
+      "type": "Bonded",
+      "patterns": ["truba", "shponka"],
+      "interface_treatment": "AdjustToTouch"
+    },
+    "mgaika_mbolt": {
+      "type": "Bonded",
+      "patterns": ["mgaika", "mbolt"],
+      "interface_treatment": "AdjustToTouch"
+    },
+    "mbolt_offset": {
+      "type": "Frictional",
+      "patterns": ["mbolt"],
+      "exclude_patterns": ["mgaika"],
+      "friction_coefficient": 0.3,
+      "interface_treatment": "AddOffsetNoRamping"
+    },
+    "default_frictional": {
+      "type": "Frictional",
+      "patterns": ["*"],
+      "friction_coefficient": 0.3,
+      "interface_treatment": "AdjustToTouch"
+    }
+  },
+  "grouping": {
+    "Bonded": ["shov", "truba_shponka", "mgaika_mbolt"],
+    "Offset": ["mbolt_offset"],
+    "Others": ["default_frictional"]
+  }
+}

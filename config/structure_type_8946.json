@@ -1,0 +1,52 @@
+{
+  "structure_info": {
+    "id": "8946",
+    "type": "SG",
+    "description": "Опора скользящая направляющая"
+  },
+  "loads": {
+    "08": {
+      "nominal_forces": {
+        "fx": 1000,
+        "fy": 1700,
+        "fz": -3300
+      }
+    },
+    "09": {
+      "nominal_forces": {
+        "fx": 1100,
+        "fy": 1800,
+        "fz": -3600
+      }
+    },
+	"10": {
+      "nominal_forces": {
+        "fx": 1200,
+        "fy": 2000,
+        "fz": -3900
+      }
+    }
+  },
+  "torque_nm": {
+    "8": 11.8,
+    "10": 18.5,
+    "12": 31.1,
+    "16": 85.8,
+    "20": 151.7,
+    "24": 479.5,
+    "30": 888
+  },
+  "boundary_conditions": {
+    "fixed_support": "gu_fixed",
+    "remote_displacement": "gu_remote_disp"
+  },
+  "spaceclaim_processing": {
+    "clean_geometry": true,
+    "named_selections": [
+      {
+        "name": "gu_fixed",
+        "criteria": "bottom_faces"
+      }
+    ]
+  }
+}

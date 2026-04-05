@@ -1,0 +1,414 @@
+{
+  "151": {
+    "02": {
+      "F1": {
+        "nominal_forces": {"fx": 100, "fy": 250, "fz": 500},
+        "nominal_moments": {"mx": 0, "my": 15000, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 150, "fy": 380, "fz": 750},
+        "nominal_moments": {"mx": 0, "my": 22500, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 200, "fy": 500, "fz": 1000},
+        "nominal_moments": {"mx": 0, "my": 30000, "mz": 0}
+      }
+    },
+    "05": {
+      "F1": {
+        "nominal_forces": {"fx": 200, "fy": 500, "fz": 1000},
+        "nominal_moments": {"mx": 0, "my": 30000, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 300, "fy": 750, "fz": 1500},
+        "nominal_moments": {"mx": 0, "my": 45000, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 400, "fy": 1000, "fz": 2000},
+        "nominal_moments": {"mx": 0, "my": 60000, "mz": 0}
+      }
+    },
+    "07": {
+      "F1": {
+        "nominal_forces": {"fx": 400, "fy": 1000, "fz": 2000},
+        "nominal_moments": {"mx": 0, "my": 60000, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 600, "fy": 1500, "fz": 3000},
+        "nominal_moments": {"mx": 0, "my": 90000, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 800, "fy": 2000, "fz": 4000},
+        "nominal_moments": {"mx": 0, "my": 120000, "mz": 0}
+      }
+    }
+  },
+  "131/132": {
+    "00": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 400, "fy": 400, "fz": 600},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "02": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 400, "fy": 400, "fz": 600},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "03": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 400, "fy": 400, "fz": 600},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "04": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 700, "fy": 700, "fz": 1050},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "05": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 1100, "fy": 1100, "fz": 1650},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "06": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 1100, "fy": 1100, "fz": 1650},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "07": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 1100, "fy": 1100, "fz": 1650},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "08": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 2900, "fy": 2900, "fz": 4350},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "09": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 2900, "fy": 2900, "fz": 4350},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "10": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 2900, "fy": 2900, "fz": 4350},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "11": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 4400, "fy": 4400, "fz": 6600},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "12": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 4400, "fy": 4400, "fz": 6600},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "13": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 4400, "fy": 4400, "fz": 6600},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "14": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 4400, "fy": 4400, "fz": 6600},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "15": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 8200, "fy": 8200, "fz": 12300},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "17": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 8200, "fy": 8200, "fz": 12300},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "18": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 8200, "fy": 8200, "fz": 12300},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "19": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 8200, "fy": 8200, "fz": 12300},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "20": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 12700, "fy": 12700, "fz": 19050},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "21": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 12700, "fy": 12700, "fz": 19050},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "22": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 13400, "fy": 13400, "fz": 20100},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "23": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 13400, "fy": 13400, "fz": 20100},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "24": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 19600, "fy": 19600, "fz": 29400},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    },
+    "25": {
+      "F1": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 19600, "fy": 19600, "fz": 29400},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 0, "fy": 0, "fz": 0},
+        "nominal_moments": {"mx": 0, "my": 0, "mz": 0}
+      }
+    }
+  }
+  "2045": {
+    "02": {
+      "F1": {
+        "nominal_forces": {"fx": 50, "fy": 100, "fz": 200},
+        "nominal_moments": {"mx": 0, "my": 5000, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 75, "fy": 150, "fz": 300},
+        "nominal_moments": {"mx": 0, "my": 7500, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 100, "fy": 200, "fz": 400},
+        "nominal_moments": {"mx": 0, "my": 10000, "mz": 0}
+      }
+    },
+    "05": {
+      "F1": {
+        "nominal_forces": {"fx": 100, "fy": 200, "fz": 400},
+        "nominal_moments": {"mx": 0, "my": 10000, "mz": 0}
+      },
+      "F2": {
+        "nominal_forces": {"fx": 150, "fy": 300, "fz": 600},
+        "nominal_moments": {"mx": 0, "my": 15000, "mz": 0}
+      },
+      "F3": {
+        "nominal_forces": {"fx": 200, "fy": 400, "fz": 800},
+        "nominal_moments": {"mx": 0, "my": 20000, "mz": 0}
+      }
+    }
+  }
+}
