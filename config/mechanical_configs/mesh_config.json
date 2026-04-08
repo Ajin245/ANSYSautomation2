@@ -30,12 +30,12 @@
       "elementOrder": "ProgramControlled"
     },
     "opora_niz": {
-      "meshCoef": 3.0,
+      "meshCoef": 5.0,
       "meshMethod": "MultiZone", 
       "elementOrder": "Quadratic"
     },
     "opora_verh": {
-      "meshCoef": 3.0,
+      "meshCoef": 5.0,
       "meshMethod": "MultiZone",
       "elementOrder": "Quadratic"
     },
