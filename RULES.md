@@ -13,7 +13,7 @@ To ensure compatibility with the IronPython 2.7 environment, the following rules
 
 ### 1. No f-strings
 - **Prohibited**: `f"Value: {x}"`
-- **Use instead**: `"Value: {}".format(x)` or `"Value: %s" % x`.
+- **Use instead**: `"Value: {}".format(x)` or `"Value: %s" % x`.    
 
 ### 2. Print Statement
 - Use `print "message"` instead of `print("message")` unless `from __future__ import print_function` is used.
@@ -24,8 +24,8 @@ To ensure compatibility with the IronPython 2.7 environment, the following rules
 - Be careful with `str` vs `unicode` types.
 
 ### 4. Prohibited Python 3 Features
-- **No Type Hinting**: Do not use `: int` or `-> None` syntax.
-- **No Async/Await**: `async def` and `await` are not supported.
+- **No Type Hinting**: Do not use `: int` or `-> None` syntax.      
+- **No Async/Await**: `async def` and `await` are not supported.    
 - **No Keyword-only arguments**: `def func(*, arg):` is not supported.
 - **No Extended Iterable Unpacking**: `a, *b = [1, 2, 3]` is not supported.
 - **No `yield from`**: Use manual loops for delegating to sub-generators.
@@ -37,8 +37,10 @@ To ensure compatibility with the IronPython 2.7 environment, the following rules
 ## ANSYS Specifics
 - Use `Tree.AllObjects` and other ANSYS-specific API calls carefully, checking for object existence before access.
 - Always wrap API-heavy logic in `try...except` blocks to provide meaningful error messages in the ANSYS console.
+- **Do not use traceback**
 
 ## SpaceClaim Specifics
 - **Python Script, API Version**: V19
 - **Python Version**: 2.7.4 (IronPython 2.7.4 (2.7.0.40) on .NET 4.0.30319.42000 (64 bit))
 - **ANSYS SpaceClaim Version**: V21R1 (2021.1.0.11221)
+Process Group PGID: 22780

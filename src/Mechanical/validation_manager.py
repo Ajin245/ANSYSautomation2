@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import traceback
+
 class ValidationManager:
     def __init__(self, context):
         self.context = context
