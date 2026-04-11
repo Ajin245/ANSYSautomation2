@@ -31,14 +31,25 @@ class ProjectContext:
             return match.group(1) if match else None
         except: return None
 
+    def _convert_to_py(self, obj):
+        if hasattr(obj, 'Keys') and hasattr(obj, 'Item'):
+            return {k: self._convert_to_py(obj[k]) for k in obj.Keys}
+        elif hasattr(obj, 'Count') and hasattr(obj, 'GetEnumerator') and not isinstance(obj, basestring):
+            return [self._convert_to_py(item) for item in obj]
+        else:
+            return obj
+
     def _load_json_config(self, file_path):
         try:
+            import re
             content = File.ReadAllText(file_path)
+            # Удаляем комментарии //
+            content = re.sub(r'(?m)^\s*//.*$', '', content)
             serializer = JavaScriptSerializer()
-            # Приводим .NET-словарь к обычному dict
-            return dict(serializer.DeserializeObject(content))
+            net_obj = serializer.DeserializeObject(content)
+            return self._convert_to_py(net_obj)
         except Exception as e:
-            self.log.error(u"Ошибка JSON: {0}".format(e))
+            self.log.error(u"Ошибка JSON в {0}: {1}".format(file_path, e))
             return None
 
     def _initialize_project(self):

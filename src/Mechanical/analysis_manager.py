@@ -113,7 +113,7 @@ class AnalysisManager:
             torque_data = struct_config.get("torque_nm", {})
             
             # В ANSYS Mechanical болты обычно ищутся по Named Selections типа 'mbolt_...'
-            for ns in self.model.NamedSelections:
+            for ns in self.model.NamedSelections.Children:
                 if ns.Name.lower().startswith("mbolt"):
                     self._create_bolt_pretension(ns, torque_data)
                     
@@ -156,7 +156,7 @@ class AnalysisManager:
 
     def _get_named_selection(self, name):
         """Возвращает объект Named Selection по имени."""
-        for ns in self.model.NamedSelections:
+        for ns in self.model.NamedSelections.Children:
             if ns.Name == name:
                 return ns
         return None
