@@ -123,7 +123,7 @@ class AnalysisManager:
     def _create_bolt_pretension(self, ns_obj, torque_data):
         """
         Рассчитывает преднатяг для конкретного болта.
-        Упрощенная формула: F = T / (0.2 * d)
+        Упрощенная формула: F = T / (0.37 * d)
         """
         try:
             # Пытаемся извлечь диаметр из имени NS, например 'mbolt_M16' -> 16
@@ -137,8 +137,8 @@ class AnalysisManager:
             
             if torque:
                 # Расчет силы преднатяга (в Ньютонах)
-                # Коэффициент k = 0.2 (стандартный для несмазанной резьбы)
-                preload_n = (torque * 1000.0) / (0.2 * diameter)
+                # Коэффициент k = 0.37 (стандартный для несмазанной резьбы)
+                preload_n = (torque) / (0.2 * diameter/1000)
                 
                 bolt = self.analysis.AddBoltPretension()
                 bolt.Location = ns_obj

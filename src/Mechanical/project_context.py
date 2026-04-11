@@ -28,7 +28,9 @@ class ProjectContext:
         self._initialize_project()
 
     def _setup_logger(self):
-        """Настраивает базовый логгер для вывода в консоль ANSYS."""
+        """
+        Настраивает базовый логгер для вывода в консоль ANSYS.
+        """
         class AnsysLogger:
             def __init__(self):
                 self.prefix = "ProjectContext: "
@@ -64,7 +66,8 @@ class ProjectContext:
                 self.log.warning(u"Не удалось извлечь Project ID из названия проекта: {0}. Ожидается формат 'Project_XXX'.".format(project_name))
                 return None
         except Exception as e:
-            self.log.error(u"Ошибка при получении или парсинге имени проекта: {0}\n{1}".format(e, traceback.format_exc()))
+            self.log.error(u"Ошибка при получении или парсинге имени проекта: {0}
+{1}".format(e, traceback.format_exc()))
             return None
 
     def _load_json_config(self, file_path):
@@ -72,8 +75,6 @@ class ProjectContext:
         Безопасно загружает JSON-файл конфигурации.
         """
         try:
-            # В Python 2.7 open не принимает encoding, используем io.open если нужно, 
-            # но для простых JSON достаточно обычного open.
             with open(file_path, 'r') as f:
                 config_data = json.load(f)
                 self.log.info(u"Успешно загружен конфиг: {0}".format(file_path))
@@ -85,7 +86,8 @@ class ProjectContext:
             self.log.error(u"Ошибка декодирования JSON в файле: {0}".format(file_path))
             return None
         except Exception as e:
-            self.log.error(u"Неизвестная ошибка при загрузке конфига {0}: {1}\n{2}".format(file_path, e, traceback.format_exc()))
+            self.log.error(u"Неизвестная ошибка при загрузке конфига {0}: {1}
+{2}".format(file_path, e, traceback.format_exc()))
             return None
 
     def _initialize_project(self):
@@ -102,11 +104,10 @@ class ProjectContext:
             else:
                 self.log.warning(u"В проекте не найдено ни одного анализа.")
         except Exception as e:
-            self.log.error(u"Не удалось получить доступ к Model или Analysis: {0}\n{1}".format(e, traceback.format_exc()))
+            self.log.error(u"Не удалось получить доступ к Model или Analysis: {0}
+{1}".format(e, traceback.format_exc()))
             
-        # Пути в ANSYS Mechanical могут быть специфичными, используем os.path
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        # Предполагаем, что config находится на два уровня выше src/Mechanical
         project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
         mechanical_configs_dir = os.path.join(project_root, "config", "mechanical_configs")
         
@@ -117,7 +118,7 @@ class ProjectContext:
             "project_settings.json": "project_settings"
         }
         
-        for filename, config_key in common_configs_to_load.iteritems(): # Использование iteritems() для Python 2
+        for filename, config_key in common_configs_to_load.iteritems():
             file_path = os.path.join(mechanical_configs_dir, filename)
             config_data = self._load_json_config(file_path)
             if config_data is not None:
@@ -134,9 +135,3 @@ class ProjectContext:
                 self.configs["structure_type"] = structure_config_data
             else:
                 self.log.warning(u"Специфичный конфиг '{0}' не найден или не загружен.".format(structure_config_filename))
-            
-        # Добавляем путь к src в sys.path
-        src_path = os.path.abspath(os.path.join(current_dir, ".."))
-        if src_path not in sys.path:
-            sys.path.append(src_path)
-            self.log.info(u"Добавлен путь к модулям: {0}".format(src_path))
