@@ -19,16 +19,29 @@ class ValidationManager:
             errors.append(u"Объект Analysis не найден в проекте.")
         if "structure_type" in self.context.configs:
             struct_config = self.context.configs["structure_type"]
+
             if "boundary_conditions" in struct_config:
-                for bc in struct_config["boundary_conditions"]:
-                    ns_name = bc.get("named_selection")
-                    if ns_name and not self._named_selection_exists(ns_name):
-                        errors.append(u"Named Selection '{0}' (для BC) не найден.".format(ns_name))
+                bc_config = struct_config["boundary_conditions"]
+                if isinstance(bc_config, dict):
+                    # Iterate over values directly since values are NS names
+                    for ns_name in bc_config.values():
+                        if ns_name and not self._named_selection_exists(ns_name):
+                            errors.append(u"Named Selection '{0}' (для BC) не найден.".format(ns_name))
+                elif isinstance(bc_config, list):
+                    for bc in bc_config:
+                        if isinstance(bc, dict):
+                            ns_name = bc.get("named_selection")
+                            if ns_name and not self._named_selection_exists(ns_name):
+                                errors.append(u"Named Selection '{0}' (для BC) не найден.".format(ns_name))
+
             if "bolts" in struct_config:
-                for bolt in struct_config["bolts"]:
-                    ns_name = bolt.get("named_selection")
-                    if ns_name and not self._named_selection_exists(ns_name):
-                        errors.append(u"Named Selection '{0}' (для болта) не найден.".format(ns_name))
+                bolts_config = struct_config["bolts"]
+                if isinstance(bolts_config, list):
+                    for bolt in bolts_config:
+                        if isinstance(bolt, dict):
+                            ns_name = bolt.get("named_selection")
+                            if ns_name and not self._named_selection_exists(ns_name):
+                                errors.append(u"Named Selection '{0}' (для болта) не найден.".format(ns_name))
         if errors:
             self.log.error(u"Валидация НЕ ПРОЙДЕНА. Обнаружены ошибки:")
             for err in errors:
@@ -38,7 +51,7 @@ class ValidationManager:
         return True
     def _named_selection_exists(self, name):
         try:
-            for ns in self.context.model.NamedSelections:
+            for ns in self.context.model.NamedSelections.Children:
                 if ns.Name == name:
                     return True
             return False

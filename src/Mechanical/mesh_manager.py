@@ -49,7 +49,7 @@ class MeshManager:
 
     def _get_named_selection(self, name):
         """Возвращает объект Named Selection по имени."""
-        for ns in self.model.NamedSelections:
+        for ns in self.model.NamedSelections.Children:
             if ns.Name == name:
                 return ns
         return None
