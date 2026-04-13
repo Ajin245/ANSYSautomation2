@@ -43,7 +43,7 @@ class MeshManager:
             if ns_object:
                 self._apply_mesh_to_ns(mesh, ns_object, params)
             else:
-                self.log.debug(u"Named Selection '{0}' не найден, настройки сетки пропущены.".format(ns_name))
+                self.log.warning(u"Named Selection '{0}' не найден, настройки сетки пропущены.".format(ns_name))
 
         self.log.info(u"Настройка сетки КЭ завершена.")
 

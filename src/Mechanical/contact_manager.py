@@ -34,15 +34,15 @@ class ContactManager:
         # Получаем все контактные группы
         try:
             connections = self.model.Connections
+            if connections is None:
+                raise Exception(u"Не удалось получить раздел Connections")
             contact_groups = connections.Children
-            
             found_any = False
             for group in contact_groups:
                 # В IronPython сравнение категорий может требовать ToString()
-                if group.DataModelObjectCategory.ToString() == "ContactGroup":
+                if group.DataModelObjectCategory.ToString() == "ConnectionGroup":
                     self._process_contact_group(group, settings)
                     found_any = True
-            
             if not found_any:
                 self.log.warning(u"В дереве модели не найдено групп контактов (Contact Groups).")
                 
@@ -92,7 +92,7 @@ class ContactManager:
                         break
             
             if match:
-                self.log.debug(u"Применение правила '{0}' к контакту '{1}'".format(rule_key, contact.Name))
+                self.log.warning(u"Применение правила '{0}' к контакту '{1}'".format(rule_key, contact.Name))
                 self._configure_contact(contact, rule_params)
                 break # Применяем только первое подошедшее правило
 
