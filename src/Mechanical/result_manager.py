@@ -27,12 +27,14 @@ class ResultManager:
             return
 
         try:
+            solution = self.analysis.Solution
+            
             # 1. Общие перемещения (Total Deformation)
-            total_def = self.analysis.AddTotalDeformation()
+            total_def = solution.AddTotalDeformation()
             total_def.Name = u"Total Deformation"
             
             # 2. Напряжения (Equivalent Von-Mises Stress)
-            equiv_stress = self.analysis.AddEquivalentStress()
+            equiv_stress = solution.AddEquivalentStress()
             equiv_stress.Name = u"Equivalent Stress"
 
             # 3. Реакции опор (если применимо, можно искать по Named Selection)

@@ -2,6 +2,7 @@
   "contact_settings": {
     "shov": {
       "type": "Bonded",
+      "patterns": ["shov"],
       "interface_treatment": "AdjustToTouch"
     },
     "truba_shponka": {

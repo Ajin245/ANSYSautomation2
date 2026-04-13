@@ -21,6 +21,7 @@ class ProjectContext:
             def info(self, msg): print("INFO: " + msg)
             def warning(self, msg): print("WARNING: " + msg)
             def error(self, msg): print("ERROR: " + msg)
+            def debug(self, msg): print("DEBUG: " + msg)
         self.log = AnsysLogger()
 
     def _get_project_id(self):

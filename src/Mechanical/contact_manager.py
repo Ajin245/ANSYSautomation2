@@ -60,6 +60,11 @@ class ContactManager:
 
         for contact in contacts:
             if contact.DataModelObjectCategory.ToString() == "ContactRegion":
+                # Переименовываем контакт на основе тел, которые он соединяет
+                try:
+                    contact.RenameBasedOnDefinition()
+                except:
+                    pass
                 self._apply_rules_to_contact(contact, contact_rules)
 
     def _apply_rules_to_contact(self, contact, rules):
