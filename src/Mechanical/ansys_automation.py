@@ -23,6 +23,9 @@ def run_automation():
     from Mechanical.result_manager import ResultManager
 
     try:
+        # Импортируем Quantity из Ansys.Core.Units
+        from Ansys.Core.Units import Quantity
+
         # Собираем необходимые Enum и классы из глобального контекста ANSYS
         ansys_enums = {
             "MethodType": MethodType,
