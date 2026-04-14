@@ -23,7 +23,14 @@ def run_automation():
     from Mechanical.result_manager import ResultManager
 
     try:
-        context = ProjectContext(ExtAPI)
+        # Собираем необходимые Enum и классы из глобального контекста ANSYS
+        ansys_enums = {
+            "MethodType": MethodType,
+            "MeshMethodAlgorithm": MeshMethodAlgorithm,
+            "ElementOrder": ElementOrder
+        }
+        
+        context = ProjectContext(ExtAPI, Quantity, ansys_enums)
         context.log.info(u"Начало работы...")
 
         contact_mgr = ContactManager(context)

@@ -6,8 +6,10 @@ from System.IO import File, Path
 import sys
 
 class ProjectContext:
-    def __init__(self, ext_api):
+    def __init__(self, ext_api, quantity_class=None, enums=None):
         self.ext_api = ext_api
+        self.Quantity = quantity_class
+        self.enums = enums or {}
         self.model = None
         self.analysis = None
         self.project_id = None
@@ -44,7 +46,6 @@ class ProjectContext:
         try:
             import re
             content = File.ReadAllText(file_path)
-            # Удаляем комментарии //
             content = re.sub(r'(?m)^\s*//.*$', '', content)
             serializer = JavaScriptSerializer()
             net_obj = serializer.DeserializeObject(content)
@@ -74,4 +75,19 @@ class ProjectContext:
         if self.project_id:
             path = Path.Combine(root, "config", "structure_type_{0}.json".format(self.project_id))
             data = self._load_json_config(path)
-            if data: self.configs["structure_type"] = data
+            if data: 
+                self.configs["structure_type"] = data
+                # Вывод информации о проекте
+                info = data.get("structure_info", {})
+                self.log.info(u"--- Информация о конструкции ---")
+                self.log.info(u"Тип: {0}".format(info.get("type", "N/A")))
+                self.log.info(u"Описание: {0}".format(info.get("description", "N/A")))
+                
+                # Парсинг номера исполнения и диаметра из имени проекта (напр. Project_18-245)
+                project_name = self.ext_api.DataModel.Project.Name
+                import re
+                match = re.search(r"(\d+)-(\d+)", project_name)
+                if match:
+                    self.log.info(u"Номер исполнения: {0}".format(match.group(1)))
+                    self.log.info(u"Диаметр трубопровода: {0} мм".format(match.group(2)))
+                self.log.info(u"---------------------------------")

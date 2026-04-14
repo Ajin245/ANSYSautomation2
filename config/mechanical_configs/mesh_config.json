@@ -4,7 +4,7 @@
       "meshCoef": 6.7,
       "meshMethod": "Sweep",
 	  "meshAlgorithm" : "Axisymmetric",
-      "elementOrder": "ProgramControlled"
+      "elementOrder": "Quadratic"
     },
     "mgaika": {
       "meshCoef": 6.7,
@@ -82,6 +82,16 @@
       "meshCoef": 2.5,
       "meshMethod": "Sweep",
       "elementOrder": "ProgramControlled"
-    }
+    },
+	"upor": {
+     "meshCoef": 3, 
+     "meshMethod": "MultiZone",
+     "elementOrder": "ProgramControlled"
+	},
+	"podkladka": {
+      "meshCoef": 2,
+      "meshMethod": "MultiZone",
+      "elementOrder": "ProgramControlled"
+    },
   }
 }
