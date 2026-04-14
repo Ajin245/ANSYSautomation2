@@ -123,6 +123,25 @@ class MeshManager:
                                 method.Algorithm = ma_enum.Axisymmetric
                     elif "MultiZone" in mesh_method_type:
                         method.Method = mt_enum.MultiZone
+                        
+                        # Настройка SurfaceMeshMethod для MultiZone (0-ProgramControlled, 1-Uniform, 2-Pave)
+                        smm_str = params.get("surfaceMeshMethod")
+                        self.log.debug(u"smm_str: {0}".format(smm_str))
+                        if smm_str:
+                            smm_map = {"ProgramControlled": 0, "Uniform": 1, "Pave": 2}
+                            smm_val = smm_map.get(smm_str)
+                            if smm_val is not None:
+                                method.SurfaceMeshMethod = smm_val
+                                self.log.debug(u"Установлен SurfaceMeshMethod: {0} ({1})".format(smm_str, smm_val))
+
+                        # Настройка FreeMeshType для MultiZone (0-NotAllowed, 1-Tetra, 2-Tetra/Pyramid, 3-HexaDominant, 4-HexaCore)
+                        fmt_str = params.get("freeMeshType")
+                        if fmt_str:
+                            fmt_map = {"NotAllowed": 0, "Tetra": 1, "TetraPyramid": 2, "HexaDominant": 3, "HexaCore": 4}
+                            fmt_val = fmt_map.get(fmt_str)
+                            if fmt_val is not None:
+                                method.FreeMeshType = fmt_val
+                                self.log.debug(u"Установлен FreeMeshType: {0} ({1})".format(fmt_str, fmt_val))
                 
                 # Настройка порядка элементов (Element Order)
                 if element_order:

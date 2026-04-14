@@ -41,7 +41,9 @@
     "truba": {
       "meshCoef": 4.0,
       "meshMethod": "MultiZone",
-      "elementOrder": "Quadratic"
+      "elementOrder": "Quadratic",
+	  "surfaceMeshMethod" : "Uniform",
+	  "freeMeshType":"HexaCore"
     },
     "shponka": {
       "meshCoef": 4.0,
