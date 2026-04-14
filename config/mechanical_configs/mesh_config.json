@@ -92,6 +92,6 @@
       "meshCoef": 2,
       "meshMethod": "MultiZone",
       "elementOrder": "ProgramControlled"
-    },
+    }
   }
 }
