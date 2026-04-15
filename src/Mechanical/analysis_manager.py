@@ -54,7 +54,7 @@ class AnalysisManager:
                 return
 
             settings = self.analysis.AnalysisSettings
-            steps = scenario.get("steps", 1)
+            steps = scenario.get("steps", 3) # Устанавливаем 3 шага, как в конфиге
             settings.NumberOfSteps = steps
             
             # Настройка параметров решателя
@@ -171,15 +171,48 @@ class AnalysisManager:
 
     def _apply_loads(self):
         """
-        Применяет силы и моменты на основе конфигурации.
+        Применяет силы на основе конфигурации для NS 'gu_force' с учетом шагов нагружения.
         """
         try:
             struct_config = self.context.configs.get("structure_type", {})
             loads_config = struct_config.get("loads", {})
+            scenario = self.context.configs.get("analysis_scenarios", {}).get("standard_sequence", {})
+            Quantity = self.context.Quantity
             
-            # Для каждого шага и каждой нагрузки создаем объект в Mechanical
-            # (Упрощенная логика: предполагаем, что NS для нагрузок заданы в конфиге)
-            pass
+            # Определяем номер исполнения из контекста
+            execution_no = getattr(self.context, "execution_no", None)
+            if not execution_no or execution_no not in loads_config:
+                self.log.warning(u"Данные нагрузок для исполнения {0} не найдены.".format(execution_no))
+                return
+
+            forces = loads_config[execution_no].get("nominal_forces", {})
+            load_factors = scenario.get("load_factors", [1.0])
+            ns_obj = self._get_named_selection("gu_force")
+            
+            if ns_obj and forces:
+                force = self.analysis.AddForce()
+                force.Location = ns_obj
+                force.DefineBy = LoadDefineBy.Components
+                
+                steps = int(self.analysis.AnalysisSettings.NumberOfSteps)
+                time_points = [Quantity(i, "s") for i in range(steps + 1)]
+                
+                # Добавляем 0 шаг [0.0] + остальные факторы из сценария [0.5, 1.0, 1.5]
+                factors = [0.0] + load_factors
+                
+                # Настройка компонентов силы
+                for axis, component in [("fx", force.XComponent), 
+                                       ("fy", force.YComponent), 
+                                       ("fz", force.ZComponent)]:
+                    nominal_val = forces.get(axis, 0)
+                    output_values = [Quantity(nominal_val * f, "N") for f in factors]
+                    
+                    component.Inputs[0].DiscreteValues = time_points
+                    component.Output.DiscreteValues = output_values
+                
+                self.log.info(u"Нагрузка Force задана для 'gu_force' (FX:{0}, FY:{1}, FZ:{2}, Factors:{3})".format(forces.get("fx"), forces.get("fy"), forces.get("fz"), factors))
+            else:
+                self.log.warning(u"Не удалось настроить нагрузку: NS 'gu_force' или данные сил отсутствуют.")
                     
         except Exception as e:
             self.log.warning(u"Ошибка при применении нагрузок: {0}".format(e))
@@ -192,7 +225,7 @@ class AnalysisManager:
             struct_config = self.context.configs.get("structure_type", {})
             torque_data = struct_config.get("torque_nm", {})
             
-            # В ANSYS Mechanical болты обычно ищутся по Named Selections типа 'gu_bolt...'
+            # В ANSYS Mechanical болты ищутся по Named Selections типа 'gu_bolt...'
             for ns in self.model.NamedSelections.Children:
                 if ns.Name.lower().startswith("gu_bolt"):
                     self._create_bolt_pretension(ns, torque_data)
@@ -203,10 +236,8 @@ class AnalysisManager:
     def _create_bolt_pretension(self, ns_obj, torque_data):
         """
         Рассчитывает преднатяг для конкретного болта.
-        Упрощенная формула: F = T / (0.37 * d)
         """
         try:
-            # Пытаемся извлечь диаметр из имени NS, например 'mbolt_M16' -> 16
             import re
             match = re.search(r"m(\d+)", ns_obj.Name.lower())
             if not match:
@@ -216,17 +247,14 @@ class AnalysisManager:
             torque = torque_data.get(str(diameter)) or torque_data.get(diameter)
             
             if torque:
-                # Расчет силы преднатяга (в Ньютонах)
-                # Коэффициент k = 0.37 (стандартный для несмазанной резьбы)
                 preload_n = (torque) / (0.2 * diameter/1000)
                 
                 bolt = self.analysis.AddBoltPretension()
                 bolt.Location = ns_obj
                 bolt.Name = u"Bolt_{0}".format(ns_obj.Name)
                 
-                # Установка значения для первого шага (Load)
                 bolt.DefineBy = bolt.DefineBy.Load
-                # В API значения могут требовать использования Quantity
+                # Установка значения для шага (обычно преднатяг на первом шаге)
                 # bolt.Preload.Output.SetData(preload_n) 
                 
                 self.log.debug(u"Настроен болт {0}: момент {1} Нм -> преднатяг {2:.1f} Н".format(ns_obj.Name, torque, preload_n))

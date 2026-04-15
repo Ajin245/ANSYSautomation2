@@ -25,14 +25,16 @@ def run_automation():
     try:
         # Импортируем Quantity из Ansys.Core.Units
         from Ansys.Core.Units import Quantity
+        # Импортируем LoadDefineBy из того же модуля Enums
+        from Ansys.Mechanical.DataModel.Enums import LoadDefineBy
 
-        # Собираем необходимые Enum и классы из глобального контекста ANSYS
+    # Собираем необходимые Enum и классы из глобального контекста ANSYS
         ansys_enums = {
             "MethodType": MethodType,
             "MeshMethodAlgorithm": MeshMethodAlgorithm,
-            "ElementOrder": ElementOrder
+            "ElementOrder": ElementOrder,
+            "LoadDefineBy": LoadDefineBy
         }
-        
         context = ProjectContext(ExtAPI, Quantity, ansys_enums)
         context.log.info(u"Начало работы...")
 
@@ -41,13 +43,13 @@ def run_automation():
         analysis_mgr = AnalysisManager(context)
         validation_mgr = ValidationManager(context)
         result_mgr = ResultManager(context)
-
+    
         contact_mgr.setup_contacts()
         mesh_mgr.apply_mesh_settings()
         analysis_mgr.apply_boundary_conditions_and_loads()
         validation_mgr.validate_model_setup()
         result_mgr.setup_plot_results()
-
+    
         context.log.info(u"Автоматизация успешно завершена.")
 
     except Exception as e:

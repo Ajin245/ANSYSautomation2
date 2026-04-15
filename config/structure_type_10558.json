@@ -48,7 +48,7 @@
     "remote_displacement": {
       "ns_name": "gu_remote_disp",
       "rotation": {
-        "rx": 10.0,
+        "rx": 0,
         "ry": 0,
         "rz": 0
       }

@@ -58,8 +58,25 @@ class ProjectContext:
         self.project_id = self._get_project_id()
         try:
             self.model = self.ext_api.DataModel.Project.Model
+            
+            # Парсинг номера исполнения и диаметра из имени модели (напр. '18-245')
+            model_name = self.model.Name
+            self.log.debug(u"Анализ имени модели для извлечения данных: '{0}'".format(model_name))
+            import re
+            match = re.search(r"(\d+)-(\d+)", model_name)
+            if match:
+                self.execution_no = match.group(1)
+                self.pipe_diameter = match.group(2)
+                self.log.info(u"Номер исполнения: {0}".format(self.execution_no))
+                self.log.info(u"Диаметр трубопровода: {0} мм".format(self.pipe_diameter))
+            else:
+                self.log.warning(u"Не удалось извлечь исполнение и диаметр из имени модели: '{0}'".format(model_name))
+                self.execution_no = None
+                self.pipe_diameter = None
+                
             if self.model.Analyses.Count > 0: self.analysis = self.model.Analyses[0]
-        except: pass
+        except Exception as e:
+            self.log.error(u"Ошибка инициализации проекта: {0}".format(e))
             
         root = r"C:\Users\user\source\repos\ANSYSautomation2"
         cfg_dir = Path.Combine(root, "config", "mechanical_configs")
@@ -77,22 +94,9 @@ class ProjectContext:
             data = self._load_json_config(path)
             if data: 
                 self.configs["structure_type"] = data
-                # Вывод информации о проекте
+                # Вывод информации о конструкции
                 info = data.get("structure_info", {})
                 self.log.info(u"--- Информация о конструкции ---")
                 self.log.info(u"Тип: {0}".format(info.get("type", "N/A")))
                 self.log.info(u"Описание: {0}".format(info.get("description", "N/A")))
-                
-                # Парсинг номера исполнения и диаметра из имени проекта (напр. Project_18-245)
-                project_name = self.ext_api.DataModel.Project.Name
-                import re
-                match = re.search(r"(\d+)-(\d+)", project_name)
-                if match:
-                    self.execution_no = match.group(1)
-                    self.pipe_diameter = match.group(2)
-                    self.log.info(u"Номер исполнения: {0}".format(self.execution_no))
-                    self.log.info(u"Диаметр трубопровода: {0} мм".format(self.pipe_diameter))
-                else:
-                    self.execution_no = None
-                    self.pipe_diameter = None
                 self.log.info(u"---------------------------------")
