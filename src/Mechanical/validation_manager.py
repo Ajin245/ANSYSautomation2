@@ -23,10 +23,14 @@ class ValidationManager:
             if "boundary_conditions" in struct_config:
                 bc_config = struct_config["boundary_conditions"]
                 if isinstance(bc_config, dict):
-                    # Iterate over values directly since values are NS names
-                    for ns_name in bc_config.values():
-                        if ns_name and not self._named_selection_exists(ns_name):
-                            errors.append(u"Named Selection '{0}' (для BC) не найден.".format(ns_name))
+                    for bc_key, ns_name in bc_config.iteritems():
+                        # Пропускаем настройки, не являющиеся именами NS
+                        if bc_key == "rotation_constraints":
+                            continue
+                        
+                        if isinstance(ns_name, basestring) and ns_name:
+                            if not self._named_selection_exists(ns_name):
+                                errors.append(u"Named Selection '{0}' (для BC) не найден.".format(ns_name))
                 elif isinstance(bc_config, list):
                     for bc in bc_config:
                         if isinstance(bc, dict):

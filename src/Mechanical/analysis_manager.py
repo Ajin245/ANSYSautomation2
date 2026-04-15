@@ -69,22 +69,102 @@ class AnalysisManager:
 
     def _apply_boundary_conditions(self):
         """
-        Применяет закрепления (Fixed Support) на основе конфигурации конструкции.
+        Применяет закрепления (Fixed Support) и удаленные перемещения (Remote Displacement) на основе конфигурации.
         """
         try:
             struct_config = self.context.configs.get("structure_type", {})
             bc_settings = struct_config.get("boundary_conditions", {})
+            Quantity = self.context.Quantity # Получаем Quantity из контекста
             
-            for bc_type, ns_name in bc_settings.iteritems():
-                ns_obj = self._get_named_selection(ns_name)
+            if not Quantity:
+                self.log.error(u"Класс Quantity не доступен в контексте ProjectContext.")
+                raise Exception(u"Quantity class not available.")
+
+            # --- Обработка Fixed Support ---
+            fixed_support_ns_name = bc_settings.get("fixed_support")
+            if fixed_support_ns_name:
+                ns_obj = self._get_named_selection(fixed_support_ns_name)
                 if not ns_obj:
-                    continue
-                
-                if bc_type == "fixed_support":
+                    self.log.warning(u"NS для Fixed Support не найден: {0}".format(fixed_support_ns_name))
+                else:
                     fixed = self.analysis.AddFixedSupport()
-                    fixed.Name = u"Fixed_{0}".format(ns_name)
+                    fixed.Name = u"Fixed_{0}".format(fixed_support_ns_name)
                     fixed.Location = ns_obj
-                    self.log.debug(u"Добавлена опора Fixed на '{0}'".format(ns_name))
+                    self.log.debug(u"Добавлена опора Fixed на '{0}'".format(fixed_support_ns_name))
+            else:
+                self.log.debug(u"Fixed Support не задан в конфигурации.")
+
+            # --- Обработка Remote Displacement ---
+            remote_displacement_config = bc_settings.get("remote_displacement")
+            if remote_displacement_config and isinstance(remote_displacement_config, dict):
+                remote_displacement_ns_name = remote_displacement_config.get("ns_name")
+                if not remote_displacement_ns_name:
+                    self.log.warning(u"Имя Named Selection для Remote Displacement не задано в конфигурации.")
+                else:
+                    ns_obj = self._get_named_selection(remote_displacement_ns_name)
+                    if not ns_obj:
+                        self.log.warning(u"NS для Remote Displacement не найден: {0}".format(remote_displacement_ns_name))
+                    else:
+                        remote = self.analysis.AddRemoteDisplacement()
+                        remote.Name = u"RemoteDisp_{0}".format(remote_displacement_ns_name)
+                        remote.Location = ns_obj
+                        self.log.info(u"Добавлен Remote Displacement на '{0}'".format(remote_displacement_ns_name))
+                        
+                        steps = int(self.analysis.AnalysisSettings.NumberOfSteps)
+                        time_points = [Quantity(i, "s") for i in range(steps + 1)]
+
+                        # --- Настройка вращений ---
+                        rotation_settings = remote_displacement_config.get("rotation", {})
+                        if rotation_settings:
+                            for rot_axis, rot_val in rotation_settings.iteritems():
+                                if rot_val is not None:
+                                    rot_values = [Quantity(float(rot_val), "rad")] * (steps + 1)
+                                    # Динамическое присвоение по имени
+                                    if rot_axis.lower() == "rx":
+                                        remote.RotationX.Inputs[0].DiscreteValues = time_points
+                                        remote.RotationX.Output.DiscreteValues = rot_values
+                                        self.log.debug(u"Установлен RX: {0} [rad] для '{1}'".format(rot_val, remote_displacement_ns_name))
+                                    
+                                    elif rot_axis.lower() == "ry":
+                                        remote.RotationY.Inputs[0].DiscreteValues = time_points
+                                        remote.RotationY.Output.DiscreteValues = rot_values
+                                        self.log.debug(u"Установлен RY: {0} [rad] для '{1}'".format(rot_val, remote_displacement_ns_name))
+                                    
+                                    elif rot_axis.lower() == "rz":
+                                        remote.RotationZ.Inputs[0].DiscreteValues = time_points
+                                        remote.RotationZ.Output.DiscreteValues = rot_values
+                                        self.log.debug(u"Установлен RZ: {0} [rad] для '{1}'".format(rot_val, remote_displacement_ns_name))
+                                else:
+                                    self.log.debug(u"Вращение {0} не задано в конфигурации для '{1}'. Пропускаем.".format(rot_axis, remote_displacement_ns_name))
+
+                        # --- Настройка перемещений ---
+                        translation_settings = remote_displacement_config.get("translation", {})
+                        if translation_settings:
+                            for trans_axis, trans_val in translation_settings.iteritems():
+                                if trans_val is not None:
+                                    # Получаем единицы длины из project_settings
+                                    length_unit = self.context.configs.get("project_settings", {}).get("units", {}).get("length", "mm")
+                                    trans_values = [Quantity(float(trans_val), length_unit)] * (steps + 1)
+                                    # Динамическое присвоение по имени
+                                    if trans_axis.lower() == "ux":
+                                        remote.XComponent.Inputs[0].DiscreteValues = time_points
+                                        remote.XComponent.Output.DiscreteValues = trans_values
+                                        self.log.debug(u"Установлен UX: {0} для '{1}'".format(trans_val, remote_displacement_ns_name))
+                                    elif trans_axis.lower() == "uy":
+                                        remote.YComponent.Inputs[0].DiscreteValues = time_points
+                                        remote.YComponent.Output.DiscreteValues = trans_values
+                                        self.log.debug(u"Установлен UY: {0} для '{1}'".format(trans_val, remote_displacement_ns_name))
+                                    elif trans_axis.lower() == "uz":
+                                        remote.ZComponent.Inputs[0].DiscreteValues = time_points
+                                        remote.ZComponent.Output.DiscreteValues = trans_values
+                                        self.log.debug(u"Установлен UZ: {0} для '{1}'".format(trans_val, remote_displacement_ns_name))
+                                else:
+                                    self.log.debug(u"Перемещение {0} не задано в конфигурации для '{1}'. Пропускаем.".format(trans_axis, remote_displacement_ns_name))
+
+                        if not rotation_settings and not translation_settings:
+                            self.log.debug(u"Ограничения вращения и перемещения не заданы в конфигурации для Remote Displacement '{0}'.".format(remote_displacement_ns_name))
+            else:
+                self.log.debug(u"Remote Displacement не задан в конфигурации или имеет некорректную структуру.")
                     
         except Exception as e:
             self.log.warning(u"Ошибка при применении ГУ: {0}".format(e))
@@ -112,9 +192,9 @@ class AnalysisManager:
             struct_config = self.context.configs.get("structure_type", {})
             torque_data = struct_config.get("torque_nm", {})
             
-            # В ANSYS Mechanical болты обычно ищутся по Named Selections типа 'mbolt_...'
+            # В ANSYS Mechanical болты обычно ищутся по Named Selections типа 'gu_bolt...'
             for ns in self.model.NamedSelections.Children:
-                if ns.Name.lower().startswith("mbolt"):
+                if ns.Name.lower().startswith("gu_bolt"):
                     self._create_bolt_pretension(ns, torque_data)
                     
         except Exception as e:
@@ -155,7 +235,8 @@ class AnalysisManager:
             self.log.warning(u"Ошибка при создании преднатяга для '{0}': {1}".format(ns_obj.Name, e))
 
     def _get_named_selection(self, name):
-        """Возвращает объект Named Selection по имени."""
+        """
+        Возвращает объект Named Selection по имени."""
         for ns in self.model.NamedSelections.Children:
             if ns.Name == name:
                 return ns

@@ -88,6 +88,11 @@ class ProjectContext:
                 import re
                 match = re.search(r"(\d+)-(\d+)", project_name)
                 if match:
-                    self.log.info(u"Номер исполнения: {0}".format(match.group(1)))
-                    self.log.info(u"Диаметр трубопровода: {0} мм".format(match.group(2)))
+                    self.execution_no = match.group(1)
+                    self.pipe_diameter = match.group(2)
+                    self.log.info(u"Номер исполнения: {0}".format(self.execution_no))
+                    self.log.info(u"Диаметр трубопровода: {0} мм".format(self.pipe_diameter))
+                else:
+                    self.execution_no = None
+                    self.pipe_diameter = None
                 self.log.info(u"---------------------------------")

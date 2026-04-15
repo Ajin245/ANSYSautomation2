@@ -30,7 +30,7 @@
   },
   "mesh_settings": {
     "default_element_order": "Linear",
-    "result_keywords": ["shov", "bolt", "opora", "truba", "osnovanie", "flanec", "korp", "rebro", "podoporka","opora_verh","opora_niz"],
+    "result_keywords": ["shov", "bolt", "opora", "truba", "osnovanie", "flanec", "korp", "rebro", "podoporka","opora_verh","opora_niz","podkladka"],
     "exclude_patterns": ["gu_*"],
     "sweep_algorithm": "Axisymmetric"
   },

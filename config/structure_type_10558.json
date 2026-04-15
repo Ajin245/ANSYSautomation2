@@ -45,7 +45,14 @@
   },
   "boundary_conditions": {
     "fixed_support": "gu_fixed",
-    "remote_displacement": "gu_remote_disp"
+    "remote_displacement": {
+      "ns_name": "gu_remote_disp",
+      "rotation": {
+        "rx": 10.0,
+        "ry": 0,
+        "rz": 0
+      }
+    }
   },
   "spaceclaim_processing": {
     "clean_geometry": true,
