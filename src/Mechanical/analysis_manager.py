@@ -234,39 +234,59 @@ class AnalysisManager:
             struct_config = self.context.configs.get("structure_type", {})
             torque_data = struct_config.get("torque_nm", {})
             
-            # В ANSYS Mechanical болты ищутся по Named Selections типа 'gu_bolt...'
+            import re
+            diameter = None
             for ns in self.model.NamedSelections.Children:
-                if ns.Name.lower().startswith("gu_bolt"):
-                    self._create_bolt_pretension(ns, torque_data)
+                match = re.search(r"mbolt(\d+)", ns.Name.lower())
+                if match:
+                    diameter = int(match.group(1))
+                    break
+
+            if diameter is None:
+                self.log.warning(u"Не найден Named Selection с диаметром болта (mbolt...). Болты не будут настроены.")
+                return
+
+            # В ANSYS Mechanical болты ищутся по Named Selections типа 'gu_bolt..._f'
+            for ns in self.model.NamedSelections.Children:
+                if ns.Name.lower().startswith("gu_bolt") and ns.Name.lower().endswith("_f"):
+                    self._create_bolt_pretension(ns, torque_data, diameter)
                     
         except Exception as e:
             self.log.warning(u"Ошибка при настройке болтов: {0}".format(e))
 
-    def _create_bolt_pretension(self, ns_obj, torque_data):
+    def _create_bolt_pretension(self, ns_obj, torque_data, diameter):
         """
         Рассчитывает преднатяг для конкретного болта.
         """
         try:
-            import re
-            match = re.search(r"m(\d+)", ns_obj.Name.lower())
-            if not match:
-                return
-            
-            diameter = int(match.group(1))
+            Quantity = self.context.Quantity
+            bolt_load_define_by = self.context.enums.get("BoltLoadDefineBy")
+            if not bolt_load_define_by:
+                try:
+                    from Ansys.Mechanical.DataModel.Enums import BoltLoadDefineBy
+                    bolt_load_define_by = BoltLoadDefineBy
+                except ImportError:
+                    self.log.error(u"Enum BoltLoadDefineBy не доступен.")
+                    return
+
             torque = torque_data.get(str(diameter)) or torque_data.get(diameter)
             
             if torque:
                 preload_n = (torque) / (0.2 * diameter/1000)
                 
-                bolt = self.analysis.AddBoltPretension()
-                bolt.Location = ns_obj
-                bolt.Name = u"Bolt_{0}".format(ns_obj.Name)
+                boltItem = self.analysis.AddBoltPretension()
+                boltItem.Location = ns_obj
+                boltItem.Name = u"Bolt_{0}".format(ns_obj.Name)
                 
-                bolt.DefineBy = bolt.DefineBy.Load
-                # Установка значения для шага (обычно преднатяг на первом шаге)
-                # bolt.Preload.Output.SetData(preload_n) 
+                boltItem.Preload.Output.SetDiscreteValue(0, Quantity(preload_n, "N"))
+
+                steps = int(self.analysis.AnalysisSettings.NumberOfSteps)
+                for step in range(2, steps + 1):
+                    boltItem.SetDefineBy(step, bolt_load_define_by.Lock)
                 
                 self.log.debug(u"Настроен болт {0}: момент {1} Нм -> преднатяг {2:.1f} Н".format(ns_obj.Name, torque, preload_n))
+            else:
+                self.log.warning(u"Момент затяжки для диаметра {0} не найден.".format(diameter))
                 
         except Exception as e:
             self.log.warning(u"Ошибка при создании преднатяга для '{0}': {1}".format(ns_obj.Name, e))
