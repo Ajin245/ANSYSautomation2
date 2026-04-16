@@ -1,8 +1,16 @@
 # -*- coding: utf-8 -*-
 import sys
+import os
 from System.IO import Path
 
-PROJECT_ROOT = r"C:\Users\user\source\repos\ANSYSautomation2"
+PROJECT_ROOT = os.environ.get("ANSYS_AUTOMATION_ROOT")
+if not PROJECT_ROOT:
+    current_file = os.path.abspath(__file__)
+    if "ANSYS Inc" not in current_file:
+        PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+    else:
+        PROJECT_ROOT = os.path.join(os.path.expanduser("~"), "source", "repos", "ANSYSautomation2")
+
 src_path = Path.Combine(PROJECT_ROOT, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)

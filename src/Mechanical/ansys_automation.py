@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import sys
+import os
 import clr
 clr.AddReference("System.IO")
 from System.IO import Path
@@ -7,8 +8,18 @@ from System.IO import Path
 # ПРИНУДИТЕЛЬНО ОТКЛЮЧАЕМ _json
 sys.modules['_json'] = None
 
-# ПУТЬ К РЕПОЗИТОРИЮ (через .NET)
-PROJECT_ROOT = r"C:\Users\user\source\repos\ANSYSautomation2"
+# ПУТЬ К РЕПОЗИТОРИЮ (динамически)
+# Если запущено в ANSYS, __file__ может врать. Используем путь относительно HOME или переменную окружения.
+PROJECT_ROOT = os.environ.get("ANSYS_AUTOMATION_ROOT")
+if not PROJECT_ROOT:
+    # Пытаемся вычислить относительно __file__ только если мы НЕ в директории Ansys
+    current_file = os.path.abspath(__file__)
+    if "ANSYS Inc" not in current_file:
+        PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+    else:
+        # Стандартный путь в repos
+        PROJECT_ROOT = os.path.join(os.path.expanduser("~"), "source", "repos", "ANSYSautomation2")
+
 src_path = Path.Combine(PROJECT_ROOT, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)

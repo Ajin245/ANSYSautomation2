@@ -4,6 +4,7 @@ clr.AddReference("System.Web.Extensions")
 from System.Web.Script.Serialization import JavaScriptSerializer
 from System.IO import File, Path
 import sys
+import os
 
 class ProjectContext:
     def __init__(self, ext_api, quantity_class=None, enums=None):
@@ -93,7 +94,14 @@ class ProjectContext:
         except Exception as e:
             self.log.error(u"Ошибка инициализации проекта: {0}".format(e))
             
-        root = r"C:\Users\user\source\repos\ANSYSautomation2"
+        root = os.environ.get("ANSYS_AUTOMATION_ROOT")
+        if not root:
+            current_file = os.path.abspath(__file__)
+            if "ANSYS Inc" not in current_file:
+                root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+            else:
+                root = os.path.join(os.path.expanduser("~"), "source", "repos", "ANSYSautomation2")
+
         cfg_dir = Path.Combine(root, "config", "mechanical_configs")
         
         common = {"mesh_config.json": "mesh_config", "contact_settings.json": "contact_settings", 
