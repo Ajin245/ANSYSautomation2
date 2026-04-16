@@ -192,7 +192,16 @@ class AnalysisManager:
             if ns_obj and forces:
                 force = self.analysis.AddForce()
                 force.Location = ns_obj
-                force.DefineBy = LoadDefineBy.Components
+
+                load_define_by = self.context.enums.get("LoadDefineBy")
+                if load_define_by:
+                    force.DefineBy = load_define_by.Components
+                else:
+                    try:
+                        from Ansys.Mechanical.DataModel.Enums import LoadDefineBy
+                        force.DefineBy = LoadDefineBy.Components
+                    except ImportError:
+                        self.log.error(u"Enum LoadDefineBy не доступен.")
                 
                 steps = int(self.analysis.AnalysisSettings.NumberOfSteps)
                 time_points = [Quantity(i, "s") for i in range(steps + 1)]

@@ -10,6 +10,7 @@ class ProjectContext:
         self.ext_api = ext_api
         self.Quantity = quantity_class
         self.enums = enums or {}
+        self._load_fallback_enums()
         self.model = None
         self.analysis = None
         self.project_id = None
@@ -17,6 +18,20 @@ class ProjectContext:
         self._setup_logger()
         self.log.info(u"ProjectContext инициализирован.")
         self._initialize_project()
+
+    def _load_fallback_enums(self):
+        try:
+            from Ansys.Mechanical.DataModel.Enums import LoadDefineBy, MethodType, MeshMethodAlgorithm, ElementOrder
+            if "LoadDefineBy" not in self.enums:
+                self.enums["LoadDefineBy"] = LoadDefineBy
+            if "MethodType" not in self.enums:
+                self.enums["MethodType"] = MethodType
+            if "MeshMethodAlgorithm" not in self.enums:
+                self.enums["MeshMethodAlgorithm"] = MeshMethodAlgorithm
+            if "ElementOrder" not in self.enums:
+                self.enums["ElementOrder"] = ElementOrder
+        except ImportError:
+            pass
 
     def _setup_logger(self):
         class AnsysLogger:
