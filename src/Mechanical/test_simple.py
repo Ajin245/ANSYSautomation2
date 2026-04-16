@@ -1,8 +1,29 @@
 # -*- coding: utf-8 -*-
 import sys
+import os
 from System.IO import Path
 
-PROJECT_ROOT = r"C:\Users\user\source\repos\ANSYSautomation2"
+PROJECT_ROOT = os.environ.get("ANSYS_AUTOMATION_ROOT")
+if not PROJECT_ROOT:
+    try:
+        cur_file = sys._getframe().f_code.co_filename
+    except:
+        cur_file = __file__
+    if cur_file and not cur_file.startswith('<'):
+        cur_file = os.path.abspath(cur_file)
+        if "src" in cur_file:
+            parts = cur_file.split(os.sep)
+            for i in range(len(parts) - 1, -1, -1):
+                if parts[i] == "src":
+                    PROJECT_ROOT = os.sep.join(parts[:i])
+                    break
+    if not PROJECT_ROOT:
+        cwd = os.getcwd()
+        if os.path.exists(os.path.join(cwd, "src")):
+            PROJECT_ROOT = cwd
+    if not PROJECT_ROOT:
+        PROJECT_ROOT = os.path.join(os.path.expanduser("~"), "source", "repos", "ANSYSautomation2")
+
 src_path = Path.Combine(PROJECT_ROOT, "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
