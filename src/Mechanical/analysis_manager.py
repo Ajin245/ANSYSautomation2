@@ -272,7 +272,7 @@ class AnalysisManager:
             torque = torque_data.get(str(diameter)) or torque_data.get(diameter)
             
             if torque:
-                preload_n = (torque) / (0.2 * diameter/1000)
+                preload_n = (torque) / (0.37 * diameter/1000)
                 
                 boltItem = self.analysis.AddBoltPretension()
                 boltItem.Location = ns_obj
