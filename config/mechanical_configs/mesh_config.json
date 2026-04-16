@@ -7,7 +7,7 @@
       "elementOrder": "Quadratic"
     },
     "mgaika": {
-      "meshCoef": 6.7,
+      "meshCoef": 7.2,
       "meshMethod": "Sweep",
 	  "meshAlgorithm" : "Axisymmetric",  
       "elementOrder": "ProgramControlled"
@@ -29,7 +29,7 @@
       "elementOrder": "ProgramControlled"
     },
     "opora_niz": {
-      "meshCoef": 5.0,
+      "meshCoef": 6.0,
       "meshMethod": "MultiZone", 
       "elementOrder": "Quadratic"
     },
@@ -39,7 +39,7 @@
       "elementOrder": "Quadratic"
     },
     "truba": {
-      "meshCoef": 4.0,
+      "meshCoef": 4.08,
       "meshMethod": "MultiZone",
       "elementOrder": "Quadratic",
 	  "surfaceMeshMethod" : "Uniform",
@@ -81,8 +81,8 @@
       "elementOrder": "Quadratic"
     },
     "rebro": {
-      "meshCoef": 2.5,
-      "meshMethod": "Sweep",
+      "meshCoef": 3,
+      "meshMethod": "MultiZone",
       "elementOrder": "ProgramControlled"
     },
 	"upor": {
@@ -91,7 +91,7 @@
      "elementOrder": "ProgramControlled"
 	},
 	"podkladka": {
-      "meshCoef": 2,
+      "meshCoef": 1,
       "meshMethod": "MultiZone",
       "elementOrder": "ProgramControlled"
     }
