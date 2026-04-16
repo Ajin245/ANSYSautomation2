@@ -96,10 +96,23 @@ class ProjectContext:
             
         root = os.environ.get("ANSYS_AUTOMATION_ROOT")
         if not root:
-            current_file = os.path.abspath(__file__)
-            if "ANSYS Inc" not in current_file:
-                root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
-            else:
+            try:
+                cur_file = sys._getframe().f_code.co_filename
+            except:
+                cur_file = __file__
+            if cur_file and not cur_file.startswith('<'):
+                cur_file = os.path.abspath(cur_file)
+                if "src" in cur_file:
+                    parts = cur_file.split(os.sep)
+                    for i in range(len(parts) - 1, -1, -1):
+                        if parts[i] == "src":
+                            root = os.sep.join(parts[:i])
+                            break
+            if not root:
+                cwd = os.getcwd()
+                if os.path.exists(os.path.join(cwd, "src")):
+                    root = cwd
+            if not root:
                 root = os.path.join(os.path.expanduser("~"), "source", "repos", "ANSYSautomation2")
 
         cfg_dir = Path.Combine(root, "config", "mechanical_configs")
