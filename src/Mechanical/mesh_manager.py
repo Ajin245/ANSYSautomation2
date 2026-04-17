@@ -28,6 +28,9 @@ class MeshManager:
             self.log.error(u"Модель не найдена. Настройка сетки невозможна.")
             return
 
+        self.sizings_to_collect = []
+        self.methods_to_collect = []
+
         settings = self.context.configs.get("mesh_config")
         if not settings:
             self.log.warning(u"Настройки сетки не найдены в конфигурации (mesh_config).")
@@ -63,6 +66,8 @@ class MeshManager:
                 else:
                     self.log.warning(u"Для NS '{0}' не найдено подходящих правил в mesh_config.".format(ns_name))
 
+            self._create_tree_groups()
+
         except Exception as e:
             self.log.error(u"Ошибка при обходе Named Selections для сетки: {0}".format(e))
 
@@ -91,6 +96,7 @@ class MeshManager:
                 sizing = mesh_obj.AddSizing()
                 sizing.Name = u"Sizing_{0}".format(ns_name)
                 sizing.Location = ns_obj
+                self.sizings_to_collect.append(sizing)
                 
                 if match:
                     val = float(match.group(1))
@@ -110,6 +116,7 @@ class MeshManager:
                 method = mesh_obj.AddAutomaticMethod()
                 method.Name = u"Method_{0}_{1}".format(mesh_method_type, ns_name)
                 method.Location = ns_obj
+                self.methods_to_collect.append(method)
                 
                 # Установка типа метода
                 mt_enum = self.enums.get("MethodType")
@@ -158,3 +165,21 @@ class MeshManager:
 
         except Exception as e:
             self.log.error(u"Ошибка настройки сетки '{0}': {1}".format(ns_name, str(e)))
+
+    def _create_tree_groups(self):
+        """
+        Создает группы в дереве проекта на основе собранных объектов сетки.
+        """
+        self.log.info(u"Группировка настроек сетки в дереве...")
+        groups = {
+            "Sizing": self.sizings_to_collect,
+            "Method": self.methods_to_collect
+        }
+        
+        for group_name, objects in groups.items():
+            if objects:
+                try:
+                    group = self.context.ext_api.DataModel.Tree.Group(objects)
+                    group.Name = group_name
+                except Exception as e:
+                    self.log.error(u"Не удалось создать группу '{0}': {1}".format(group_name, e))
