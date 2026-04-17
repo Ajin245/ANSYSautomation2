@@ -54,6 +54,11 @@
       }
     }
   },
+  "mesh_overrides": {
+    "mbolt": {
+      "meshAlgorithm": "None"
+    }
+  },
   "spaceclaim_processing": {
     "clean_geometry": true,
     "named_selections": [

@@ -62,7 +62,19 @@ class MeshManager:
                 
                 if best_rule_key:
                     self.log.info(u"Сопоставлено: NS '{0}' -> Правило '{1}'".format(ns_name, best_rule_key))
-                    self._apply_mesh_to_ns(mesh, ns, mesh_rules[best_rule_key])
+                    
+                    # Клонируем параметры для возможности переопределения
+                    params = mesh_rules[best_rule_key].copy()
+                    
+                    # Проверяем наличие специфичных переопределений для данного типа конструкции
+                    st_config = self.context.configs.get("structure_type", {})
+                    mesh_overrides = st_config.get("mesh_overrides", {})
+                    for ov_key, ov_params in mesh_overrides.items():
+                        if ov_key.lower() in ns_name_lower:
+                            self.log.info(u"Применено переопределение сетки '{0}' для '{1}'".format(ov_key, ns_name))
+                            params.update(ov_params)
+
+                    self._apply_mesh_to_ns(mesh, ns, params)
                 else:
                     self.log.warning(u"Для NS '{0}' не найдено подходящих правил в mesh_config.".format(ns_name))
 
