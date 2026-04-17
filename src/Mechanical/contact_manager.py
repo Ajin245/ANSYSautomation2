@@ -26,6 +26,12 @@ class ContactManager:
             self.log.error(u"Модель не найдена. Настройка контактов невозможна.")
             return
 
+        self.groups_to_collect = {
+            "Bonded": [],
+            "Offset": [],
+            "Others": []
+        }
+
         settings = self.context.configs.get("contact_settings")
         if not settings:
             self.log.warning(u"Настройки контактов не найдены в конфигурации (contact_settings).")
@@ -43,7 +49,10 @@ class ContactManager:
                 if group.DataModelObjectCategory.ToString() == "ConnectionGroup":
                     self._process_contact_group(group, settings)
                     found_any = True
-            if not found_any:
+            
+            if found_any:
+                self._create_tree_groups()
+            else:
                 self.log.warning(u"В дереве модели не найдено групп контактов (Contact Groups).")
                 
         except Exception as e:
@@ -66,6 +75,21 @@ class ContactManager:
                 except:
                     pass
                 self._apply_rules_to_contact(contact, contact_rules)
+                self._categorize_contact(contact)
+
+    def _get_rule_priority(self, rule_params):
+        """
+        Определяет приоритет правила. 
+        Чем меньше возвращаемое число, тем выше приоритет (правило проверяется раньше).
+        """
+        patterns = rule_params.get("patterns", [])
+        if patterns == ["*"]:
+            # Правило 'все остальные' должно быть самым последним
+            return 1000
+        
+        # Специфичные правила (где больше паттернов) имеют более высокий приоритет
+        # (возвращаем отрицательное количество паттернов)
+        return -len(patterns)
 
     def _apply_rules_to_contact(self, contact, rules):
         """
@@ -73,8 +97,12 @@ class ContactManager:
         """
         name = contact.Name.lower()
         
-        # Перебираем правила из конфига. В Python 2 используем iteritems()
-        for rule_key, rule_params in rules.iteritems():
+        # Сортируем ключи правил по приоритету (специфичные в начале)
+        # В Python 2.7 rules.keys() возвращает список ключей
+        sorted_rule_keys = sorted(rules.keys(), key=lambda k: self._get_rule_priority(rules[k]))
+        
+        for rule_key in sorted_rule_keys:
+            rule_params = rules[rule_key]
             patterns = rule_params.get("patterns", [])
             exclude_patterns = rule_params.get("exclude_patterns", [])
             
@@ -97,9 +125,11 @@ class ContactManager:
                         break
             
             if match:
-                self.log.warning(u"Применение правила '{0}' к контакту '{1}'".format(rule_key, contact.Name))
+                self.log.info(u"Контакт '{0}': применено правило '{1}'".format(contact.Name, rule_key))
                 self._configure_contact(contact, rule_params)
-                break # Применяем только первое подошедшее правило
+                return # Применяем только первое подошедшее правило
+        
+        self.log.debug(u"Для контакта '{0}' не найдено подходящих правил.".format(contact.Name))
 
     def _configure_contact(self, contact, params):
         """
@@ -133,3 +163,40 @@ class ContactManager:
 
         except Exception as e:
             self.log.warning(u"Не удалось настроить параметры для '{0}': {1}".format(contact.Name, e))
+
+    def _categorize_contact(self, contact):
+        """
+        Категоризирует контакт для последующей группировки.
+        """
+        try:
+            c_type = contact.ContactType
+            i_treat = contact.InterfaceTreatment
+            
+            # Логика категоризации согласно требованиям:
+            # Bonded - bonded
+            # Offset - Frictional с опцией Add Offset
+            # Others - Frictional с опцией AdjustToTouch
+            
+            if c_type == contact.ContactType.Bonded:
+                self.groups_to_collect["Bonded"].append(contact)
+            elif c_type == contact.ContactType.Frictional:
+                if i_treat == contact.InterfaceTreatment.AddOffsetNoRamping:
+                    self.groups_to_collect["Offset"].append(contact)
+                elif i_treat == contact.InterfaceTreatment.AdjustToTouch:
+                    self.groups_to_collect["Others"].append(contact)
+        except Exception as e:
+            self.log.debug(u"Ошибка при категоризации контакта '{0}': {1}".format(contact.Name, e))
+
+    def _create_tree_groups(self):
+        """
+        Создает группы в дереве проекта на основе собранных контактов.
+        """
+        self.log.info(u"Группировка контактов в дереве...")
+        for group_name, contacts in self.groups_to_collect.items():
+            if contacts:
+                try:
+                    # ExtAPI.DataModel.Tree.Group создает группу из списка объектов
+                    group = self.context.ext_api.DataModel.Tree.Group(contacts)
+                    group.Name = group_name
+                except Exception as e:
+                    self.log.error(u"Не удалось создать группу '{0}': {1}".format(group_name, e))
