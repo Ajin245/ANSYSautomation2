@@ -36,11 +36,32 @@ class ProjectContext:
 
     def _setup_logger(self):
         class AnsysLogger:
-            def info(self, msg): print("INFO: " + msg)
-            def warning(self, msg): print("WARNING: " + msg)
-            def error(self, msg): print("ERROR: " + msg)
-            def debug(self, msg): print("DEBUG: " + msg)
-        self.log = AnsysLogger()
+            def __init__(self, ext_api):
+                self.ext_api = ext_api
+
+            def info(self, msg):
+                try:
+                    self.ext_api.Log.WriteMessage(unicode(msg))
+                except:
+                    print("INFO: " + msg)
+
+            def warning(self, msg):
+                try:
+                    self.ext_api.Log.WriteWarning(unicode(msg))
+                except:
+                    print("WARNING: " + msg)
+
+            def error(self, msg):
+                try:
+                    self.ext_api.Log.WriteError(unicode(msg))
+                except:
+                    print("ERROR: " + msg)
+
+            def debug(self, msg):
+                # Debug оставляем в стандартном выводе, чтобы не перегружать лог ANSYS
+                print("DEBUG: " + msg)
+
+        self.log = AnsysLogger(self.ext_api)
 
     def _get_project_id(self):
         try:
