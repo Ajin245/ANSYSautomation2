@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 
+from Mechanical.bolt_manager import BoltManager
+
+
 class AnalysisManager:
     """
     Класс для управления граничными условиями, нагрузками и настройками анализа в ANSYS Mechanical.
-    Реализует расчет преднатяга болтов и настройку шагов нагружения.
+    Настраивает шаги нагружения; преднатяг болтов делегирует ``BoltManager`` (FR-8).
     """
     def __init__(self, context):
         """
@@ -16,6 +19,7 @@ class AnalysisManager:
         self.log = context.log
         self.analysis = context.analysis
         self.model = context.model
+        self.bolt_manager = BoltManager(context)
 
     def apply_boundary_conditions_and_loads(self):
         """
@@ -36,8 +40,8 @@ class AnalysisManager:
         # 3. Нагрузки
         self._apply_loads()
 
-        # 4. Болты (Преднатяг)
-        self._setup_bolt_pretensions()
+        # 4. Болты (Преднатяг) — отдельный менеджер (FR-8)
+        self.bolt_manager.setup_bolt_pretensions()
 
         self.log.info(u"Настройка условий анализа завершена.")
 
@@ -225,71 +229,6 @@ class AnalysisManager:
                     
         except Exception as e:
             self.log.warning(u"Ошибка при применении нагрузок: {0}".format(e))
-
-    def _setup_bolt_pretensions(self):
-        """
-        Создает объекты Bolt Pretension и рассчитывает усилие затяжки по моменту.
-        """
-        try:
-            struct_config = self.context.configs.get("structure_type", {})
-            torque_data = struct_config.get("torque_nm", {})
-            
-            import re
-            diameter = None
-            for ns in self.model.NamedSelections.Children:
-                match = re.search(r"mbolt(\d+)", ns.Name.lower())
-                if match:
-                    diameter = int(match.group(1))
-                    break
-
-            if diameter is None:
-                self.log.warning(u"Не найден Named Selection с диаметром болта (mbolt...). Болты не будут настроены.")
-                return
-
-            # В ANSYS Mechanical болты ищутся по Named Selections типа 'gu_bolt..._f'
-            for ns in self.model.NamedSelections.Children:
-                if ns.Name.lower().startswith("gu_bolt") and ns.Name.lower().endswith("_f"):
-                    self._create_bolt_pretension(ns, torque_data, diameter)
-                    
-        except Exception as e:
-            self.log.warning(u"Ошибка при настройке болтов: {0}".format(e))
-
-    def _create_bolt_pretension(self, ns_obj, torque_data, diameter):
-        """
-        Рассчитывает преднатяг для конкретного болта.
-        """
-        try:
-            Quantity = self.context.Quantity
-            bolt_load_define_by = self.context.enums.get("BoltLoadDefineBy")
-            if not bolt_load_define_by:
-                try:
-                    from Ansys.Mechanical.DataModel.Enums import BoltLoadDefineBy
-                    bolt_load_define_by = BoltLoadDefineBy
-                except ImportError:
-                    self.log.error(u"Enum BoltLoadDefineBy не доступен.")
-                    return
-
-            torque = torque_data.get(str(diameter)) or torque_data.get(diameter)
-            
-            if torque:
-                preload_n = (torque) / (0.37 * diameter/1000)
-                
-                boltItem = self.analysis.AddBoltPretension()
-                boltItem.Location = ns_obj
-                boltItem.Name = u"Bolt_{0}".format(ns_obj.Name)
-                
-                boltItem.Preload.Output.SetDiscreteValue(0, Quantity(preload_n, "N"))
-
-                steps = int(self.analysis.AnalysisSettings.NumberOfSteps)
-                for step in range(2, steps + 1):
-                    boltItem.SetDefineBy(step, bolt_load_define_by.Lock)
-                
-                self.log.debug(u"Настроен болт {0}: момент {1} Нм -> преднатяг {2:.1f} Н".format(ns_obj.Name, torque, preload_n))
-            else:
-                self.log.warning(u"Момент затяжки для диаметра {0} не найден.".format(diameter))
-                
-        except Exception as e:
-            self.log.warning(u"Ошибка при создании преднатяга для '{0}': {1}".format(ns_obj.Name, e))
 
     def _get_named_selection(self, name):
         """

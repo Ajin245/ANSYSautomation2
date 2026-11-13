@@ -41,6 +41,14 @@ class PretensionTestCase(unittest.TestCase):
     def test_torque_to_pretension_none_torque(self):
         self.assertIsNone(pretension.torque_to_pretension(None, 8))
 
+    def test_torque_factor_is_v2_constant(self):
+        # Q6, ветвь A: коэффициент формулы v2 зафиксирован в одном месте.
+        self.assertAlmostEqual(pretension.TORQUE_FACTOR, 0.37, places=12)
+
+    def test_torque_to_pretension_float_diameter(self):
+        # Диаметр может прийти числом с плавающей точкой (8.0) из имени NS.
+        self.assertAlmostEqual(pretension.torque_to_pretension(11.8, 8.0), 3986.5, delta=0.1)
+
     def test_torque_to_pretension_invalid_diameter(self):
         self.assertRaises(ValueError, pretension.torque_to_pretension, 11.8, 0)
         self.assertRaises(ValueError, pretension.torque_to_pretension, 11.8, None)
@@ -72,6 +80,16 @@ class PretensionTestCase(unittest.TestCase):
     def test_select_bolt_diameter_not_found(self):
         self.assertIsNone(pretension.select_bolt_diameter(['gu_fixed', 'opora']))
         self.assertEqual(pretension.select_bolt_diameter([], default=10), 10)
+
+    def test_select_torque_string_diameter_argument(self):
+        self.assertEqual(pretension.select_torque({'12': 31.1}, '12'), 31.1)
+
+    def test_select_bolt_diameter_is_case_insensitive(self):
+        self.assertEqual(pretension.select_bolt_diameter(['GU_BOLT12_F']), 12)
+        self.assertEqual(pretension.select_bolt_diameter(['MBOLT10']), 10)
+
+    def test_select_bolt_diameter_skips_empty_and_none_names(self):
+        self.assertIsNone(pretension.select_bolt_diameter(['', None, 'gu_fixed']))
 
     def test_select_bolt_diameter_objects(self):
         names = [_NamedSelection('mbolt10'), _NamedSelection('gu_fixed')]
