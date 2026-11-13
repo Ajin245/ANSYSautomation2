@@ -3,3 +3,6 @@ GEMINI.md
 Plan.md
 RULES.md
 __pycache__/
+*.pyc
+results/
+qa-workspace/
