@@ -1,34 +1,46 @@
 # Python Script, API Version = V19
 # -*- coding: utf-8 -*-
 import os
-import json
+import sys
 import math
 from SpaceClaim.Api.V19 import *
 
-# ===== CONFIGURATION LOADING =====
-def get_project_root():
-    """Dynamically determine project root"""
-    try:
-        path = os.path.dirname(os.path.abspath(__file__))
-        return os.path.abspath(os.path.join(path, "..", ".."))
-    except:
-        return os.getcwd()
+# ===== ID КОНСТРУКЦИИ =====
+# Номер конструкции (например, номер проекта Workbench). None — ID берётся из имени
+# документа (Project_<id>); если и там нет, скрипт остановится с понятной ошибкой.
+# Зашитого дефолта нет: FR-2, PLAN-MERGE §4.6.
+STRUCTURE_ID = None
 
-def load_structure_config(structure_id="8946"):
-    """Load JSON configuration for the structure"""
-    root = get_project_root()
-    config_path = os.path.join(root, "config", "structure_type_{0}.json".format(structure_id))
-    
-    if not os.path.exists(config_path):
-        print("WARNING: Config not found at {0}. Trying relative path...".format(config_path))
-        config_path = os.path.join("config", "structure_type_{0}.json".format(structure_id))
-        
+# ===== ПОДКЛЮЧЕНИЕ ЧИСТЫХ ПОМОЩНИКОВ =====
+def _add_helpers_to_path():
+    """Добавляет каталог скрипта в sys.path, чтобы работал 'import sc_helpers'.
+
+    В SpaceClaim скрипт исполняется из редактора, и каталог скрипта не всегда попадает
+    в sys.path. Порядок поиска: каталог скрипта -> ANSYS_AUTOMATION_ROOT/src/SpaceClaim
+    -> cwd/src/SpaceClaim -> cwd.
+    """
+    candidates = []
     try:
-        with open(config_path, 'r') as f:
-            return json.load(f)
-    except Exception as e:
-        print("ERROR: Failed to load config: {0}".format(str(e)))
-        return None
+        candidates.append(os.path.dirname(os.path.abspath(__file__)))
+    except Exception:
+        pass
+    root = os.environ.get("ANSYS_AUTOMATION_ROOT")
+    if root:
+        candidates.append(os.path.join(root, "src", "SpaceClaim"))
+    candidates.append(os.path.join(os.getcwd(), "src", "SpaceClaim"))
+    candidates.append(os.getcwd())
+    for path in candidates:
+        if path and os.path.isdir(path) and path not in sys.path:
+            sys.path.insert(0, path)
+
+_add_helpers_to_path()
+
+try:
+    import sc_helpers
+except ImportError as exc:
+    print("CRITICAL ERROR: sc_helpers.py is not importable ({0}). "
+          "Script stopped: without helpers the structure ID and config cannot be resolved.".format(exc))
+    raise
 
 # ===== GEOMETRY PREPARATION METHODS (FROM ORIGINAL SCRIPT) =====
 def delete_surface_bodies(doc):
@@ -81,8 +93,8 @@ def rotate_tubes_to_axis(doc):
     all_bodies = root_part.GetAllBodies()
     try:
 
-        truba_bodies = [body for body in all_bodies if "truba" in body.GetName().lower()]
-        podopor_bodies = [body for body in all_bodies if "podopor" in body.GetName().lower()]
+        truba_bodies = sc_helpers.select_bodies_by_keywords(all_bodies, ["truba"])
+        podopor_bodies = sc_helpers.select_bodies_by_keywords(all_bodies, ["podopor"])
         
         if not truba_bodies:
             print("No bodies with 'truba' in name found for rotation")
@@ -132,7 +144,9 @@ def rotate_tubes_to_axis(doc):
                     axis = Line.Create(truba_origin, Direction.Create(0, 1, 0))
                     angle = math.radians(-90)
                 
-                selection = Selection.Create(all_bodies) # Should be just 'body' for rotation, not all bodies
+                # Поворачиваем только текущую трубу: выборка всех тел вращала сборку
+                # целиком и ломала уже выровненные тела (дефект исходного скрипта).
+                selection = Selection.Create(body)
                 Move.Rotate(selection, axis, angle, MoveOptions())
                 print("Rotated body: " + body.GetName() + " to align with X-axis")
             except Exception as e:
@@ -161,7 +175,11 @@ def rotate_tubes_to_axis(doc):
         znorm = Direction.Create(1.0,0.0,0.0)
         vector_normal = face_normal.UnitVector
         if vector_normal.X != 0.0 or vector_normal.Y != 0.0:
-            selection = Selection.Create(all_bodies)
+            # Здесь "все тела" — намеренно: подопора разворачивает сборку как единое
+            # целое, чтобы нормаль наибольшей грани легла на ось X. Это не тот случай,
+            # что в цикле выше (там вращается одна труба). Оставлено как было в v2;
+            # вопрос "вращать только подопору?" — в open_questions карточки.
+            selection = Selection.CreateByObjects(all_bodies)
             origin_point = MeasureHelper.GetCenterOfMass(selection)
             axis = Line.Create(origin_point, Direction.Create(1, 0, 0))
             angle = math.radians(90)
@@ -199,7 +217,8 @@ def create_pipeline_axis_plane(doc):
     """Создание новой плоскости, проходящей через центр масс трубопровода и параллельной глобальной плоскости XY"""
     try:
         root_part = GetRootPart()
-        pipeline_bodies = [body for body in root_part.GetAllBodies() if "truba" in body.GetName().lower() or "tryba" in body.GetName().lower()]
+        pipeline_bodies = sc_helpers.select_bodies_by_keywords(root_part.GetAllBodies(),
+                                                              ["truba", "tryba"])
         
         if not pipeline_bodies:
             print("No bodies with 'truba' or 'tryba' in name found for pipeline axis plane")
@@ -223,24 +242,35 @@ doc = DocumentHelper.GetActiveDocument()
 
 if doc:
     print("--- STARTING SPACECLAIM GEOMETRY PREPARATION ---")
-    config = load_structure_config("8946") # Default ID for now
-    
-    if config:
-        sc_proc_settings = config.get("spaceclaim_processing", {})
-        if sc_proc_settings.get("clean_geometry", True): # Default to true if not specified
-            delete_surface_bodies(doc)
-            rotate_tubes_to_axis(doc)
-            move_all_bodies_to_origin(doc)
-            create_principal_planes(doc)
-            create_pipeline_axis_plane(doc)
-        
-        print("Geometry preparation completed successfully!")
-        root_part = GetRootPart()
-        all_bodies = root_part.GetAllBodies()
-        selection = Selection.CreateByObjects(all_bodies)
-        ViewHelper.ZoomToEntity(selection)
-        Selection.Clear()
+
+    structure_id = None
+    try:
+        structure_id = sc_helpers.resolve_structure_id(STRUCTURE_ID, sc_helpers.document_name(doc))
+    except sc_helpers.StructureIdError as ex:
+        print("CRITICAL ERROR: " + str(ex))
+
+    if structure_id is None:
+        print("CRITICAL ERROR: structure ID is not resolved. Geometry preparation aborted.")
     else:
-        print("CRITICAL ERROR: Configuration file not loaded. Geometry preparation aborted.")
+        print("Structure ID: {0}".format(structure_id))
+        config = sc_helpers.load_structure_config(structure_id)
+
+        if config:
+            sc_proc_settings = config.get("spaceclaim_processing", {})
+            if sc_proc_settings.get("clean_geometry", True): # Default to true if not specified
+                delete_surface_bodies(doc)
+                rotate_tubes_to_axis(doc)
+                move_all_bodies_to_origin(doc)
+                create_principal_planes(doc)
+                create_pipeline_axis_plane(doc)
+            
+            print("Geometry preparation completed successfully!")
+            root_part = GetRootPart()
+            all_bodies = root_part.GetAllBodies()
+            selection = Selection.CreateByObjects(all_bodies)
+            ViewHelper.ZoomToEntity(selection)
+            Selection.Clear()
+        else:
+            print("CRITICAL ERROR: Configuration file not loaded. Geometry preparation aborted.")
 else:
     print("Document not found!")
