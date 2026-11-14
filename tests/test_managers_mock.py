@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
-"""BoltManager и ResultManager на fake-объектах Mechanical (этап 4).
+"""Менеджеры на fake-объектах Mechanical (этапы 4–6).
 
 Проверяется контракт вызовов, а не поведение ANSYS (NFR-6):
-``AddBoltPretension`` для ``gu_bolt*_f``, ``AddTotalDeformation``/
-``AddEquivalentStress``, запись CSV во временный каталог. Fake-слой повторяет
-формы API из RESEARCH-ANSYS-API §3.10-3.11, но не заменяет ручной прогон.
+``AddBoltPretension`` для ``gu_bolt*_f``, ``AddRemoteDisplacement`` для
+строкового и словарного ``remote_displacement`` (FR-6), ``RenameBasedOnDefinition``
+и ``Tree.Group`` контактов, ``AddSizing``/``AddAutomaticMethod`` сетки,
+``AddTotalDeformation``/``AddEquivalentStress`` и запись CSV. Fake-слой
+повторяет формы API из RESEARCH-ANSYS-API §3.10-3.11, но не заменяет ручной
+прогон.
 """
 
 import io
@@ -19,9 +22,12 @@ SRC = os.path.join(ROOT, "src")
 if SRC not in sys.path:
     sys.path.insert(0, SRC)
 
-from Mechanical.analysis_manager import AnalysisManager
+from Mechanical.analysis_manager import AnalysisManager, parse_remote_displacement
 from Mechanical.bolt_manager import BoltManager
-from Mechanical.result_manager import ResultManager
+from Mechanical.contact_manager import ContactManager
+from Mechanical.mesh_manager import MeshManager
+from Mechanical.result_manager import (ResultManager, RESULTS_PATH_ENV,
+                                         resolve_export_path)
 
 
 class FakeLog(object):
@@ -100,6 +106,41 @@ class FakeAnalysisSettings(object):
         self.NumberOfSteps = steps
 
 
+class FakeDiscreteInput(object):
+    """``Inputs[0]``: хранит присвоенный ``DiscreteValues``."""
+
+    def __init__(self):
+        self.DiscreteValues = None
+
+
+class FakeComponent(object):
+    """Компонент ``remote``: ``Inputs[0]`` и ``Output``."""
+
+    def __init__(self):
+        self.Inputs = [FakeDiscreteInput()]
+        self.Output = FakeDiscreteInput()
+
+
+class FakeRemoteDisplacement(object):
+    """Двойник объекта ``RemoteDisplacement``."""
+
+    def __init__(self):
+        self.Name = None
+        self.Location = None
+        self.RotationX = FakeComponent()
+        self.RotationY = FakeComponent()
+        self.RotationZ = FakeComponent()
+        self.XComponent = FakeComponent()
+        self.YComponent = FakeComponent()
+        self.ZComponent = FakeComponent()
+
+
+class FakeFixedSupport(object):
+    def __init__(self):
+        self.Name = None
+        self.Location = None
+
+
 class FakeResult(object):
     """Двойник результата ``Solution``: ``Name``, ``Unit``, ``PlotData``."""
 
@@ -132,14 +173,156 @@ class FakeNamedSelection(object):
         self.Name = name
 
 
+class FakeCollection(list):
+    """Список в форме ANSYS-коллекции: ``Children`` с ``Count`` (MeshManager)."""
+
+    @property
+    def Count(self):
+        return len(self)
+
+
 class FakeNamedSelections(object):
     def __init__(self, names):
-        self.Children = [FakeNamedSelection(name) for name in names]
+        self.Children = FakeCollection(FakeNamedSelection(name) for name in names)
+
+
+class FakeSizing(object):
+    def __init__(self):
+        self.Name = None
+        self.Location = None
+        self.ElementSize = None
+
+
+class FakeMethod(object):
+    def __init__(self):
+        self.Name = None
+        self.Location = None
+        self.Method = None
+        self.Algorithm = None
+        self.ElementOrder = None
+        self.SurfaceMeshMethod = None
+        self.FreeMeshType = None
+
+
+class FakeMesh(object):
+    """Двойник ``Model.Mesh``: фабрики Sizing и AutomaticMethod."""
+
+    def __init__(self):
+        self.sizings = []
+        self.methods = []
+
+    def AddSizing(self):
+        sizing = FakeSizing()
+        self.sizings.append(sizing)
+        return sizing
+
+    def AddAutomaticMethod(self):
+        method = FakeMethod()
+        self.methods.append(method)
+        return method
+
+
+class FakeGroup(object):
+    def __init__(self, objects):
+        self.Objects = list(objects)
+        self.Name = None
+
+
+class FakeTree(object):
+    """Двойник ``ExtAPI.DataModel.Tree``: ``Group`` запоминает вызовы."""
+
+    def __init__(self):
+        self.groups = []
+
+    def Group(self, objects):
+        group = FakeGroup(objects)
+        self.groups.append(group)
+        return group
+
+
+class FakeDataModel(object):
+    def __init__(self):
+        self.Tree = FakeTree()
+
+
+class FakeExtApi(object):
+    def __init__(self):
+        self.DataModel = FakeDataModel()
+
+
+class _EnumMember(object):
+    """Элемент перечисления Mechanical: сравним по имени."""
+
+    def __init__(self, name):
+        self.name = name
+
+    def __eq__(self, other):
+        return isinstance(other, _EnumMember) and other.name == self.name
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __repr__(self):
+        return "EnumMember({0})".format(self.name)
+
+
+class FakeContactType(_EnumMember):
+    """``contact.ContactType``: у элемента есть доступ к членам класса."""
+
+
+FakeContactType.Bonded = FakeContactType("Bonded")
+FakeContactType.Frictional = FakeContactType("Frictional")
+FakeContactType.Frictionless = FakeContactType("Frictionless")
+
+
+class FakeInterfaceTreatment(_EnumMember):
+    """``contact.InterfaceTreatment``: AdjustToTouch / AddOffsetNoRamping / Offset."""
+
+
+FakeInterfaceTreatment.AdjustToTouch = FakeInterfaceTreatment("AdjustToTouch")
+FakeInterfaceTreatment.AddOffsetNoRamping = FakeInterfaceTreatment("AddOffsetNoRamping")
+FakeInterfaceTreatment.Offset = FakeInterfaceTreatment("Offset")
+
+
+class FakeCategory(object):
+    def __init__(self, name):
+        self.name = name
+
+    def ToString(self):
+        return self.name
+
+
+class FakeContact(object):
+    """Двойник ``ContactRegion``: переименование и параметры контакта."""
+
+    def __init__(self, name):
+        self.Name = name
+        self.DataModelObjectCategory = FakeCategory("ContactRegion")
+        self.ContactType = FakeContactType.Bonded
+        self.InterfaceTreatment = FakeInterfaceTreatment.AdjustToTouch
+        self.FrictionCoefficient = None
+        self.rename_calls = 0
+
+    def RenameBasedOnDefinition(self):
+        self.rename_calls += 1
+
+
+class FakeContactGroup(object):
+    def __init__(self, contacts):
+        self.DataModelObjectCategory = FakeCategory("ConnectionGroup")
+        self.Children = list(contacts)
+
+
+class FakeConnections(object):
+    def __init__(self, contacts):
+        self.Children = [FakeContactGroup(contacts)] if contacts else []
 
 
 class FakeModel(object):
-    def __init__(self, ns_names):
+    def __init__(self, ns_names, contacts=None):
         self.NamedSelections = FakeNamedSelections(ns_names)
+        self.Mesh = FakeMesh()
+        self.Connections = FakeConnections(contacts or [])
 
 
 class FakeAnalysis(object):
@@ -149,24 +332,73 @@ class FakeAnalysis(object):
         self.AnalysisSettings = FakeAnalysisSettings(steps)
         self.Solution = solution or FakeSolution()
         self.bolts = []
+        self.remote_displacements = []
+        self.fixed_supports = []
 
     def AddBoltPretension(self):
         bolt = FakeBoltPretension()
         self.bolts.append(bolt)
         return bolt
 
+    def AddRemoteDisplacement(self):
+        remote = FakeRemoteDisplacement()
+        self.remote_displacements.append(remote)
+        return remote
+
+    def AddFixedSupport(self):
+        support = FakeFixedSupport()
+        self.fixed_supports.append(support)
+        return support
+
+
+class FakeMethodType(object):
+    Sweep = "Sweep"
+    MultiZone = "MultiZone"
+
+
+class FakeMeshMethodAlgorithm(object):
+    Axisymmetric = "Axisymmetric"
+
+
+class FakeElementOrder(object):
+    Linear = "Linear"
+    Quadratic = "Quadratic"
+    ProgramControlled = "ProgramControlled"
+
 
 class FakeContext(object):
-    """Минимальный ``ProjectContext`` для менеджеров."""
+    """Минимальный ``ProjectContext`` для менеджеров.
+
+    ``configs`` собирается только из переданных секций: отсутствующий ключ —
+    такой же контракт, как у настоящего ``ProjectContext`` (``None`` вместо
+    ``project_settings`` уронил бы ``MeshManager``).
+    """
 
     def __init__(self, ns_names=None, torque=None, steps=3, solution=None,
-                 structure_type_id="8946", execution_no="08", analysis=True):
+                 structure_type_id="8946", execution_no="08", analysis=True,
+                 boundary_conditions=None, contact_settings=None,
+                 mesh_config=None, project_settings=None, contacts=None):
         self.log = FakeLog()
         self.Quantity = FakeQuantity
-        self.enums = {"BoltLoadDefineBy": FakeEnums}
-        self.model = FakeModel(ns_names or [])
+        self.enums = {
+            "BoltLoadDefineBy": FakeEnums,
+            "MethodType": FakeMethodType,
+            "MeshMethodAlgorithm": FakeMeshMethodAlgorithm,
+            "ElementOrder": FakeElementOrder,
+        }
+        self.model = FakeModel(ns_names or [], contacts=contacts)
         self.analysis = FakeAnalysis(steps=steps, solution=solution) if analysis else None
-        self.configs = {"structure_type": {"torque_nm": torque or {}}}
+        self.ext_api = FakeExtApi()
+        structure_type = {"torque_nm": torque or {}}
+        if boundary_conditions is not None:
+            structure_type["boundary_conditions"] = boundary_conditions
+        self.configs = {"structure_type": structure_type}
+        if contact_settings is not None:
+            self.configs["contact_settings"] = contact_settings
+        if mesh_config is not None:
+            self.configs["mesh_config"] = mesh_config
+        if project_settings is not None:
+            self.configs["project_settings"] = project_settings
         self.structure_type_id = structure_type_id
         self.execution_no = execution_no
 
@@ -255,6 +487,183 @@ class BoltManagerTestCase(unittest.TestCase):
         self.assertFalse(hasattr(AnalysisManager, "_create_bolt_pretension"))
 
 
+class RemoteDisplacementTestCase(unittest.TestCase):
+    """FR-6: ``remote_displacement`` строкой (8946) и словарём."""
+
+    def _context(self, remote_config, ns_names=None):
+        return FakeContext(ns_names=ns_names or ["gu_fixed", "gu_remote_disp"],
+                           boundary_conditions={"fixed_support": "gu_fixed",
+                                                "remote_displacement": remote_config})
+
+    def test_string_value_adds_remote_displacement(self):
+        # Значение ровно из config/structure_type_8946.json:39-42.
+        context = self._context("gu_remote_disp")
+
+        AnalysisManager(context).apply_boundary_conditions_and_loads()
+
+        remotes = context.analysis.remote_displacements
+        self.assertEqual(len(remotes), 1)
+        self.assertEqual(remotes[0].Name, "RemoteDisp_gu_remote_disp")
+        self.assertEqual(remotes[0].Location.Name, "gu_remote_disp")
+        self.assertTrue(context.log.has("info", "gu_remote_disp"))
+
+    def test_string_value_does_not_set_step_values(self):
+        context = self._context("gu_remote_disp")
+
+        AnalysisManager(context).apply_boundary_conditions_and_loads()
+
+        remote = context.analysis.remote_displacements[0]
+        self.assertIsNone(remote.XComponent.Output.DiscreteValues)
+        self.assertIsNone(remote.RotationX.Output.DiscreteValues)
+
+    def test_dict_value_keeps_rotation_and_translation(self):
+        context = self._context({
+            "ns_name": "gu_remote_disp",
+            "rotation": {"rx": 0.1},
+            "translation": {"uz": 2.0},
+        })
+
+        AnalysisManager(context).apply_boundary_conditions_and_loads()
+
+        remote = context.analysis.remote_displacements[0]
+        self.assertEqual(remote.Location.Name, "gu_remote_disp")
+        self.assertEqual(len(remote.RotationX.Output.DiscreteValues), 4)  # steps=3 -> 0..3
+        self.assertEqual(remote.RotationX.Output.DiscreteValues[0].value, 0.1)
+        self.assertEqual(remote.RotationX.Output.DiscreteValues[0].unit, "rad")
+        self.assertEqual(len(remote.ZComponent.Output.DiscreteValues), 4)
+        self.assertEqual(remote.ZComponent.Output.DiscreteValues[0].value, 2.0)
+        self.assertEqual(remote.ZComponent.Output.DiscreteValues[0].unit, "mm")
+        self.assertIsNone(remote.YComponent.Output.DiscreteValues)
+
+    def test_missing_named_selection_logs_warning_without_remote(self):
+        context = FakeContext(ns_names=["gu_fixed"],
+                              boundary_conditions={"remote_displacement": "gu_remote_disp"})
+
+        AnalysisManager(context).apply_boundary_conditions_and_loads()
+
+        self.assertEqual(context.analysis.remote_displacements, [])
+        self.assertTrue(context.log.has("warning", "gu_remote_disp"))
+
+    def test_invalid_value_raises(self):
+        context = self._context(42)
+
+        self.assertRaises(ValueError, AnalysisManager(context).apply_boundary_conditions_and_loads)
+
+    def test_parse_string_returns_name_and_empty_settings(self):
+        self.assertEqual(parse_remote_displacement(" gu_remote_disp "), ("gu_remote_disp", {}))
+
+    def test_parse_dict_returns_settings(self):
+        config = {"ns_name": "gu_remote_disp", "translation": {"uz": 1.0}}
+        self.assertEqual(parse_remote_displacement(config), ("gu_remote_disp", config))
+
+    def test_parse_rejects_empty_string_and_foreign_types(self):
+        for value in ("", "   ", 0, [], object(), None):
+            self.assertRaises(ValueError, parse_remote_displacement, value)
+
+
+class ContactManagerTestCase(unittest.TestCase):
+    """ContactManager: ``RenameBasedOnDefinition`` и группировка ``Tree.Group``."""
+
+    CONTACT_SETTINGS = {
+        "contact_settings": {
+            "shov": {"type": "Bonded", "patterns": ["shov"],
+                     "interface_treatment": "AdjustToTouch"},
+            "mbolt_offset": {"type": "Frictional", "patterns": ["mbolt"],
+                             "interface_treatment": "AddOffsetNoRamping"},
+            "default_frictional": {"type": "Frictional", "patterns": ["*"],
+                                   "friction_coefficient": 0.3,
+                                   "interface_treatment": "AdjustToTouch"},
+        },
+    }
+
+    def test_renames_every_contact_region(self):
+        contacts = [FakeContact("shov_truba"), FakeContact("mbolt_mgaika")]
+        context = FakeContext(contacts=contacts, contact_settings=self.CONTACT_SETTINGS)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual([contact.rename_calls for contact in contacts], [1, 1])
+
+    def test_groups_contacts_by_type(self):
+        bonded = FakeContact("shov_truba")
+        offset = FakeContact("mbolt_mgaika")
+        context = FakeContext(contacts=[bonded, offset],
+                              contact_settings=self.CONTACT_SETTINGS)
+
+        ContactManager(context).setup_contacts()
+
+        groups = {group.Name: group.Objects
+                  for group in context.ext_api.DataModel.Tree.groups}
+        self.assertEqual(groups["Bonded"], [bonded])
+        self.assertEqual(groups["Offset"], [offset])
+
+    def test_bonded_rule_sets_contact_type(self):
+        contact = FakeContact("shov_truba")
+        context = FakeContext(contacts=[contact], contact_settings=self.CONTACT_SETTINGS)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual(contact.ContactType, FakeContactType.Bonded)
+        self.assertEqual(contact.InterfaceTreatment, FakeInterfaceTreatment.AdjustToTouch)
+
+
+class MeshManagerTestCase(unittest.TestCase):
+    """MeshManager: ``AddSizing``, ``AddAutomaticMethod`` и группировка."""
+
+    MESH_CONFIG = {
+        "mesh_settings": {
+            "truba": {"meshCoef": 6.0, "meshMethod": "MultiZone",
+                      "elementOrder": "Quadratic"},
+        },
+    }
+
+    def test_adds_sizing_for_matched_named_selection(self):
+        context = FakeContext(ns_names=["truba245"], mesh_config=self.MESH_CONFIG,
+                              project_settings={"units": {"length": "mm"}})
+
+        MeshManager(context).apply_mesh_settings()
+
+        sizings = context.model.Mesh.sizings
+        self.assertEqual(len(sizings), 1)
+        self.assertEqual(sizings[0].Name, "Sizing_truba245")
+        self.assertEqual(sizings[0].Location.Name, "truba245")
+        # 245 / 6.0 = 40.83 мм (округление до 2 знаков, как в менеджере).
+        self.assertEqual(sizings[0].ElementSize.value, 40.83)
+        self.assertEqual(sizings[0].ElementSize.unit, "mm")
+
+    def test_adds_automatic_method_with_config(self):
+        context = FakeContext(ns_names=["truba245"], mesh_config=self.MESH_CONFIG,
+                              project_settings={"units": {"length": "mm"}})
+
+        MeshManager(context).apply_mesh_settings()
+
+        methods = context.model.Mesh.methods
+        self.assertEqual(len(methods), 1)
+        self.assertEqual(methods[0].Name, "Method_MultiZone_truba245")
+        self.assertEqual(methods[0].Method, "MultiZone")
+        self.assertEqual(methods[0].ElementOrder, "Quadratic")
+
+    def test_skips_gu_named_selections(self):
+        context = FakeContext(ns_names=["gu_force"], mesh_config=self.MESH_CONFIG,
+                              project_settings={"units": {"length": "mm"}})
+
+        MeshManager(context).apply_mesh_settings()
+
+        self.assertEqual(context.model.Mesh.sizings, [])
+        self.assertEqual(context.model.Mesh.methods, [])
+
+    def test_groups_sizing_and_method_in_tree(self):
+        context = FakeContext(ns_names=["truba245"], mesh_config=self.MESH_CONFIG,
+                              project_settings={"units": {"length": "mm"}})
+
+        MeshManager(context).apply_mesh_settings()
+
+        groups = {group.Name: group.Objects
+                  for group in context.ext_api.DataModel.Tree.groups}
+        self.assertEqual(groups["Sizing"], context.model.Mesh.sizings)
+        self.assertEqual(groups["Method"], context.model.Mesh.methods)
+
+
 class ResultManagerTestCase(unittest.TestCase):
     """ResultManager: объекты результатов и реальная запись CSV."""
 
@@ -319,17 +728,33 @@ class ResultManagerTestCase(unittest.TestCase):
         self.assertEqual(ResultManager(context).export_results(path), path)
         self.assertTrue(context.log.has("warning", "Анализ не найден"))
 
-    def test_default_export_path_is_under_cwd_results(self):
-        solution = FakeSolution()
-        context = FakeContext(solution=solution)
-        previous = os.getcwd()
-        os.chdir(self.tmpdir)
-        try:
-            path = ResultManager(context).export_results()
-        finally:
-            os.chdir(previous)
+    def test_default_export_path_is_project_results_csv(self):
+        # Имя по умолчанию — results.csv (PLAN-MERGE §1.2, §4.7), не results_export.csv.
+        context = FakeContext(solution=FakeSolution())
 
-        self.assertEqual(path, os.path.join(self.tmpdir, "results", "results_export.csv"))
+        path = resolve_export_path(context)
+
+        self.assertEqual(os.path.basename(path), "results.csv")
+        self.assertEqual(os.path.basename(os.path.dirname(path)), "results")
+
+    def test_env_var_overrides_export_path(self):
+        path = os.path.join(self.tmpdir, "custom.csv")
+        os.environ[RESULTS_PATH_ENV] = path
+        try:
+            context = FakeContext(solution=FakeSolution())
+            written = ResultManager(context).export_results()
+        finally:
+            del os.environ[RESULTS_PATH_ENV]
+
+        self.assertEqual(written, path)
+        self.assertTrue(os.path.isfile(path))
+
+    def test_config_sets_export_path(self):
+        path = os.path.join(self.tmpdir, "configured.csv")
+        context = FakeContext(solution=FakeSolution(),
+                              project_settings={"output": {"results_csv": path}})
+
+        self.assertEqual(ResultManager(context).export_results(), path)
         self.assertTrue(os.path.isfile(path))
 
 
