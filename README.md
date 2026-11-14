@@ -7,10 +7,16 @@
 
 ## Статус
 
-Репозиторий содержит рабочую копию второго поколения скриптов (v2) и находится на **этапе 1**
-плана слияния с v1: добавлены статические проверки и скелет юнит-тестов, логика v2 не менялась.
-Этапы 2–5 добавляют чистые модули (`json_parser`, `execution_parser`, `pretension`,
-`postprocessing`, `BoltManager` и др.) — их в этом репозитории пока нет.
+Репозиторий содержит слитую реализацию (v1 + v2), **этапы 1–5 плана слияния закрыты**
+(`PLAN-MERGE.md`):
+чистые модули (`json_parser`, `execution_parser`, `pretension`, `postprocessing`), контекст проекта
+с валидацией (`project_context`), менеджеры `ContactManager`/`MeshManager`/`AnalysisManager`/
+`BoltManager`/`ValidationManager`/`ResultManager`, SpaceClaim-скрипты без литералов и заглушек.
+Юнит-тесты: `python3 -m unittest discover -s tests` (138 тестов на закрытии этапа 4, дальше
+набор растёт); статический гейт — `tools/`.
+Ручной сквозной прогон в ANSYS (этап 6) и упаковка README (этап 7) ещё впереди, поэтому
+инструкция запуска ниже неполна: границу «что проверено машинно, что только руками» держит
+`qa/`.
 
 ## Требования
 
@@ -27,7 +33,7 @@ src/Mechanical/        скрипты Mechanical (точка входа — ansy
 src/SpaceClaim/        скрипты SpaceClaim
 config/                JSON-конфиги
 tools/                 статические проверки (python3)
-tests/                 скелет юнит-тестов (python3)
+tests/                 юнит-тесты чистых модулей и моков (python3)
 docs/                  план реализации
 results/               результаты расчётов (генерируется, в .gitignore)
 qa-workspace/          рабочая песочница QA (в .gitignore)
@@ -45,8 +51,16 @@ qa-workspace/          рабочая песочница QA (в .gitignore)
 2. В Mechanical: `Automation` → `Script` → открыть `src/Mechanical/ansys_automation.py`.
 3. Запустить скрипт. Точка входа — `run_automation()` в конце файла; она создаёт
    `ProjectContext`, вызывает `ContactManager`, `MeshManager`, `AnalysisManager`,
-   `ValidationManager`, `ResultManager` и включает `SaveProjectBeforeSolution`.
+   `ValidationManager`, `ResultManager`, включает `SaveProjectBeforeSolution` и сразу пишет
+   выгрузку результатов (шаг 4 конвейера, `ResultManager.export_results`).
 4. Расчёт запускает пользователь вручную.
+5. После расчёта `ResultManager.export_results()` можно вызвать повторно — данные `PlotData`
+   к этому моменту уже есть. Путь выгрузки: переменная окружения
+   `ANSYS_AUTOMATION_RESULTS` (полный путь к файлу), иначе `output.results_csv` из
+   `config/mechanical_configs/project_settings.json`, иначе `<корень проекта>/results/results.csv`.
+   Формат — 7 колонок `structure_id,execution,load_step,result_name,body,value,unit`.
+   Факт записи попадает в лог; сбой скрипта печатает маркер `AUTOMATION-FAILED` и пробрасывает
+   исключение.
 
 Для проверки, что модули импортируются в текущем окружении, есть smoke-скрипт
 `src/Mechanical/test_simple.py`: он последовательно создаёт менеджеры и печатает статус каждого
@@ -96,8 +110,10 @@ named selections.
   `python2` или на ручном прогоне в ANSYS.
 - `py2lint.py` и `check_fstrings.py` разбирают лексику (`tokenize`), поэтому слова в строках
   и комментариях не считаются нарушением.
-- `tests/` на этапе 1 — **скелет**: модули созданы, тестовых методов ещё нет, поэтому
-  `unittest` сообщает `Ran 0 tests … OK`. Реальные тесты пишутся на этапах 2–4.
+- `tests/` содержит реальные тесты чистых модулей и моков менеджеров (`BoltManager`,
+  `ResultManager`, `ContactManager`, `MeshManager`, `AnalysisManager`). Моки проверяют контракт
+  вызовов API, а не поведение ANSYS, поэтому `OK` здесь означает «вызовы совпадают с ожидаемыми»,
+  а не «в ANSYS работает».
 - Ни одна из этих проверок не подтверждает работу ANSYS API, геометрии и физики. Единственное
   доказательство — ручной прогон в ANSYS.
 
