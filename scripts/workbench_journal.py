@@ -11,8 +11,14 @@
 иначе берётся первая система, у которой есть контейнер ``Model``.
 
 Внутри Mechanical выполняется ``execfile`` нашего скрипта
-``src/Mechanical/ansys_automation.py`` через ``SendCommand``. После настройки
-модели журнал дожидается решения ``Solve(Wait=True)`` и сохраняет проект.
+``src/Mechanical/ansys_automation.py`` через ``SendCommand`` — это только
+настройка модели. Затем журнал дожидается решения ``Solve(Wait=True)``, и
+**после** решения вторым ``SendCommand`` выгружает CSV
+(``src/Mechanical/export_results.py``, шаг 4 конвейера). Если выгрузка не
+записала ни одной строки данных, журнал считает решение несостоявшимся,
+печатает ``AUTOMATION-FAILED: solve`` и завершается с кодом 1: пустой
+``results.csv`` не должен выглядеть успехом. Последним шагом проект
+сохраняется.
 
 Каждая ветка обёрнута в try/except: при ошибке печатается маркер
 ``AUTOMATION-FAILED`` (его ищет bat-обёртка) и процесс завершается с кодом 1.
@@ -127,6 +133,43 @@ def _automation_command(script_path):
     return '__file__ = r"%s"\nexecfile(r"%s")' % (script_path, script_path)
 
 
+def _export_command(script_path):
+    """Текст для второго SendCommand: выгрузка CSV после решения.
+
+    ``export_results.py`` строит ``ProjectContext`` и ``ResultManager`` так же,
+    как основной скрипт, но модель не настраивает — только пишет CSV.
+    """
+    return '__file__ = r"%s"\nexecfile(r"%s")' % (script_path, script_path)
+
+
+def _results_path(root):
+    """Путь CSV-выгрузки: ``ANSYS_AUTOMATION_RESULTS`` или ``results/results.csv``.
+
+    Совпадает с ``ResultManager.resolve_export_path`` по умолчанию
+    (``DEFAULT_EXPORT_DIR``/``DEFAULT_EXPORT_FILE``), чтобы журнал проверял
+    именно тот файл, который пишет Mechanical.
+    """
+    env_path = os.environ.get("ANSYS_AUTOMATION_RESULTS", "").strip()
+    if env_path:
+        return env_path
+    return os.path.join(root, "results", "results.csv")
+
+
+def _count_data_rows(path):
+    """Число строк данных в CSV (без заголовка); 0, если файла нет."""
+    if not os.path.exists(path):
+        return 0
+    count = -1
+    handle = open(path, "r")
+    try:
+        for line in handle:
+            if line.strip():
+                count += 1
+    finally:
+        handle.close()
+    return max(count, 0)
+
+
 def _save_project(project):
     """Сохранить проект: сначала project.Save(), затем глобальный Save()."""
     try:
@@ -184,6 +227,42 @@ def main():
     except Exception as exc:
         print("AUTOMATION-FAILED: solve: %s" % exc)
         sys.exit(1)
+
+    # Шаг 4 конвейера (FR-11, PLAN-MERGE §1.2): выгрузка CSV ПОСЛЕ решения.
+    export_script = os.environ.get(
+        "ANSYS_EXPORT_SCRIPT",
+        os.path.join(root, "src", "Mechanical", "export_results.py"),
+    )
+    print("INFO: export script=%s" % export_script)
+    if not os.path.exists(export_script):
+        print("AUTOMATION-FAILED: export script not found: %s" % export_script)
+        sys.exit(1)
+
+    try:
+        model.SendCommand(
+            Language="Python",
+            Command=_export_command(export_script),
+        )
+        print("INFO: export command sent")
+    except Exception as exc:
+        print("AUTOMATION-FAILED: export: %s" % exc)
+        sys.exit(1)
+
+    results_path = _results_path(root)
+    try:
+        data_rows = _count_data_rows(results_path)
+    except Exception as exc:
+        print("AUTOMATION-FAILED: solve: results.csv unreadable: %s (%s)"
+              % (results_path, exc))
+        sys.exit(1)
+
+    if data_rows <= 0:
+        # Пустой файл (только заголовок) = данных после решения нет: решение
+        # не сошлось либо результат не собран. Это провал, а не успех.
+        print("AUTOMATION-FAILED: solve: no data rows in %s" % results_path)
+        sys.exit(1)
+
+    print("INFO: results.csv rows=%d path=%s" % (data_rows, results_path))
 
     try:
         _save_project(project)

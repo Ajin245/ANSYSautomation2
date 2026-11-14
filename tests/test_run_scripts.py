@@ -16,6 +16,7 @@ BAT = os.path.join(ROOT, "scripts", "run_ansys.bat")
 JOURNAL = os.path.join(ROOT, "scripts", "workbench_journal.py")
 SC_GUIDE = os.path.join(ROOT, "scripts", "run_spaceclaim.md")
 RUN_MODES = os.path.join(ROOT, "docs", "run-modes.md")
+EXPORT = os.path.join(ROOT, "src", "Mechanical", "export_results.py")
 
 
 def read_text(path):
@@ -121,6 +122,51 @@ class WorkbenchJournalTestCase(unittest.TestCase):
         self.assertIn("MECH_SYSTEM_NAME", self.text)
         self.assertIn("GetSystem(Name=", self.text)
         self.assertIn("STRUCTURE_ID", self.text)
+
+
+class JournalExportOrderTestCase(unittest.TestCase):
+    """CSV выгружается ПОСЛЕ решения: настройка -> Solve -> выгрузка (Fix 6a).
+
+    Порядок доказывается позициями в тексте журнала: вызов настройки
+    (``Command=_automation_command``) идёт раньше ``Solve(Wait=True)``, а
+    второй ``SendCommand`` (``Command=_export_command``) — позже. Тест
+    статический, ANSYS не нужен.
+    """
+
+    def setUp(self):
+        self.text = read_text(JOURNAL)
+
+    def test_setup_solve_export_order(self):
+        setup = self.text.index("Command=_automation_command")
+        solve = self.text.index("system.Solve(Wait=True)")
+        export = self.text.index("Command=_export_command")
+        self.assertLess(setup, solve, "настройка должна идти до Solve")
+        self.assertLess(solve, export, "выгрузка CSV должна идти после Solve")
+
+    def test_export_is_a_second_send_command(self):
+        self.assertEqual(self.text.count("model.SendCommand"), 2)
+
+    def test_failure_branch_after_export_has_solve_marker(self):
+        export = self.text.index("Command=_export_command")
+        tail = self.text[export:]
+        self.assertIn("AUTOMATION-FAILED: solve", tail)
+        self.assertIn("exit", tail)
+
+    def test_export_uses_same_results_path_as_main_run(self):
+        export = self.text.index("Command=_export_command")
+        tail = self.text[export:]
+        self.assertIn("_results_path(root)", tail)
+        # Путь берётся из ANSYS_AUTOMATION_RESULTS, как в ResultManager.
+        self.assertIn("ANSYS_AUTOMATION_RESULTS", self.text)
+        self.assertIn('"results", "results.csv"', self.text)
+
+    def test_export_script_is_present_and_py2(self):
+        text = read_text(EXPORT)
+        self.assertEqual(text.splitlines()[0], "# -*- coding: utf-8 -*-")
+        self.assertEqual(find_fstrings(EXPORT), [])
+        self.assertIn("ResultManager", text)
+        self.assertIn("export_results()", text)
+        self.assertIn("AUTOMATION-FAILED", text)
 
 
 class RunDocumentationTestCase(unittest.TestCase):

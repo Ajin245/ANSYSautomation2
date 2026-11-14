@@ -47,20 +47,27 @@ qa-workspace/          рабочая песочница QA (в .gitignore)
 
 ### Mechanical
 
+Последовательность одна и та же во всех режимах: **настройка → решение → выгрузка CSV**.
+Выгрузка до решения смысла не имеет: `Solution` пуст, и файл получил бы один заголовок.
+
 1. Открыть проект Workbench 21R1 с моделью.
 2. В Mechanical: `Automation` → `Script` → открыть `src/Mechanical/ansys_automation.py`.
 3. Запустить скрипт. Точка входа — `run_automation()` в конце файла; она создаёт
    `ProjectContext`, вызывает `ContactManager`, `MeshManager`, `AnalysisManager`,
-   `ValidationManager`, `ResultManager`, включает `SaveProjectBeforeSolution` и сразу пишет
-   выгрузку результатов (шаг 4 конвейера, `ResultManager.export_results`).
-4. Расчёт запускает пользователь вручную.
-5. После расчёта `ResultManager.export_results()` можно вызвать повторно — данные `PlotData`
-   к этому моменту уже есть. Путь выгрузки: переменная окружения
-   `ANSYS_AUTOMATION_RESULTS` (полный путь к файлу), иначе `output.results_csv` из
-   `config/mechanical_configs/project_settings.json`, иначе `<корень проекта>/results/results.csv`.
+   `ValidationManager`, `ResultManager` и включает `SaveProjectBeforeSolution`. Это **только
+   настройка**: CSV на этом шаге не пишется.
+4. Решение. В batch-режиме (`scripts/run_ansys.bat` → `scripts/workbench_journal.py`) его
+   запускает журнал: `system.Solve(Wait=True)`. При ручном прогоне решение запускает
+   пользователь.
+5. **После** решения выгрузка CSV — `src/Mechanical/export_results.py` (шаг 4 конвейера,
+   `ResultManager.export_results`). В batch её выполняет журнал вторым `SendCommand`; при
+   ручном прогоне скрипт открывается и запускается из Mechanical после расчёта. Путь выгрузки:
+   переменная окружения `ANSYS_AUTOMATION_RESULTS` (полный путь к файлу), иначе
+   `output.results_csv` из `config/mechanical_configs/project_settings.json`, иначе
+   `<корень проекта>/results/results.csv`.
    Формат — 7 колонок `structure_id,execution,load_step,result_name,body,value,unit`.
-   Факт записи попадает в лог; сбой скрипта печатает маркер `AUTOMATION-FAILED` и пробрасывает
-   исключение.
+   Журнал проверяет, что в файле есть строки данных: если после решения остался только
+   заголовок, печатается `AUTOMATION-FAILED: solve` и прогон завершается с ненулевым кодом.
 
 Для проверки, что модули импортируются в текущем окружении, есть smoke-скрипт
 `src/Mechanical/test_simple.py`: он последовательно создаёт менеджеры и печатает статус каждого
