@@ -14,6 +14,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BAT = os.path.join(ROOT, "scripts", "run_ansys.bat")
 JOURNAL = os.path.join(ROOT, "scripts", "workbench_journal.py")
+SOLVE = os.path.join(ROOT, "src", "Mechanical", "solve_and_export.py")
 SC_GUIDE = os.path.join(ROOT, "scripts", "run_spaceclaim.md")
 RUN_MODES = os.path.join(ROOT, "docs", "run-modes.md")
 EXPORT = os.path.join(ROOT, "src", "Mechanical", "export_results.py")
@@ -111,12 +112,27 @@ class WorkbenchJournalTestCase(unittest.TestCase):
 
     def test_marker_present_in_every_failure_branch(self):
         self.assertGreaterEqual(self.text.count("AUTOMATION-FAILED"), 2)
-        # open project, find system, SendCommand, solve, save
-        self.assertGreaterEqual(self.text.count("AUTOMATION-FAILED:"), 5)
+        # Каждая ветка провала печатает "%s: <шаг>: <причина>": список систем,
+        # выбор системы, контейнер Model, две команды, ожидание CSV, сохранение.
+        self.assertGreaterEqual(self.text.count('"%s: '), 7)
 
     def test_solves_and_saves_project(self):
-        self.assertIn("Solve(Wait=True)", self.text)
-        self.assertIn("Save", self.text)
+        # Решение выполняет скрипт внутри Mechanical (у DataReference журнала
+        # нет метода Solve), журнал только передаёт его и сохраняет проект.
+        self.assertIn("solve_and_export.py", self.text)
+        self.assertIn("Save(Overwrite=True)", self.text)
+        # В коде журнала нет вызовов, которых нет в journal-API 21R1.
+        self.assertNotIn("system.Solve(Wait", self.text)
+        self.assertNotIn("project = GetProject(", self.text)
+
+    def test_publishes_project_path_from_getprojectfile(self):
+        # ID проекта ProjectContext берёт из пути к .wbpj, а не из Project.Name.
+        self.assertIn("GetProjectFile", self.text)
+        self.assertIn('PROJECT_ENV = "ANSYS_AUTOMATION_PROJECT"', self.text)
+        self.assertIn("os.environ[PROJECT_ENV] = path", self.text)
+        publish = self.text.index("_publish_project_path()")
+        first_send = self.text.index("model.SendCommand(")
+        self.assertLess(publish, first_send, "путь должен публиковаться до SendCommand")
 
     def test_system_selection_uses_argument_or_first(self):
         self.assertIn("MECH_SYSTEM_NAME", self.text)
@@ -127,38 +143,45 @@ class WorkbenchJournalTestCase(unittest.TestCase):
 class JournalExportOrderTestCase(unittest.TestCase):
     """CSV выгружается ПОСЛЕ решения: настройка -> Solve -> выгрузка (Fix 6a).
 
-    Порядок доказывается позициями в тексте журнала: вызов настройки
-    (``Command=_automation_command``) идёт раньше ``Solve(Wait=True)``, а
-    второй ``SendCommand`` (``Command=_export_command``) — позже. Тест
-    статический, ANSYS не нужен.
+    Порядок доказывается позициями в тексте: вызов настройки
+    (``Command=_exec_command(setup_script)``) идёт раньше команды решения
+    (``Command=_exec_command(solve_script)``), а решение внутри Mechanical —
+    раньше выгрузки в ``solve_and_export.py``. Тест статический, ANSYS не нужен.
     """
 
     def setUp(self):
         self.text = read_text(JOURNAL)
+        self.solve_text = read_text(SOLVE)
 
-    def test_setup_solve_export_order(self):
-        setup = self.text.index("Command=_automation_command")
-        solve = self.text.index("system.Solve(Wait=True)")
-        export = self.text.index("Command=_export_command")
-        self.assertLess(setup, solve, "настройка должна идти до Solve")
-        self.assertLess(solve, export, "выгрузка CSV должна идти после Solve")
+    def test_setup_before_solve(self):
+        setup = self.text.index("_exec_command(setup_script)")
+        solve = self.text.index("_exec_command(solve_script)")
+        self.assertLess(setup, solve, "настройка должна идти до решения")
 
-    def test_export_is_a_second_send_command(self):
-        self.assertEqual(self.text.count("model.SendCommand"), 2)
+    def test_solve_then_export_inside_mechanical(self):
+        solve = self.solve_text.index("analysis.Solve(True)")
+        export = self.solve_text.index("execfile(export_script")
+        self.assertLess(solve, export, "выгрузка CSV должна идти после решения")
 
-    def test_failure_branch_after_export_has_solve_marker(self):
-        export = self.text.index("Command=_export_command")
-        tail = self.text[export:]
-        self.assertIn("AUTOMATION-FAILED: solve", tail)
+    def test_two_send_commands(self):
+        self.assertEqual(self.text.count("model.SendCommand("), 2)
+
+    def test_failure_branch_after_solve_has_solve_marker(self):
+        solve = self.text.index("_exec_command(solve_script)")
+        tail = self.text[solve:]
+        self.assertIn('"%s: solve: ', tail)
         self.assertIn("exit", tail)
 
     def test_export_uses_same_results_path_as_main_run(self):
-        export = self.text.index("Command=_export_command")
-        tail = self.text[export:]
-        self.assertIn("_results_path(root)", tail)
+        self.assertIn("_results_path(root)", self.text)
         # Путь берётся из ANSYS_AUTOMATION_RESULTS, как в ResultManager.
         self.assertIn("ANSYS_AUTOMATION_RESULTS", self.text)
         self.assertIn('"results", "results.csv"', self.text)
+
+    def test_solve_script_is_py2_without_fstrings(self):
+        self.assertEqual(self.solve_text.splitlines()[0], "# -*- coding: utf-8 -*-")
+        self.assertEqual(find_fstrings(SOLVE), [])
+        self.assertIn("AUTOMATION-FAILED", self.solve_text)
 
     def test_export_script_is_present_and_py2(self):
         text = read_text(EXPORT)
@@ -183,6 +206,13 @@ class RunDocumentationTestCase(unittest.TestCase):
         self.assertIn("runwb2 -B", text)
         self.assertIn("SendCommand", text)
         self.assertIn("SpaceClaim", text)
+
+    def test_run_modes_states_geometry_condition_and_project_env(self):
+        text = read_text(RUN_MODES)
+        # Условие живого прогона: SendCommand доходит только при геометрии.
+        self.assertIn("геометри", text)
+        self.assertIn("ANSYS_AUTOMATION_PROJECT", text)
+        self.assertIn("GetProjectFile", text)
 
     def test_spaceclaim_guide_is_manual(self):
         text = read_text(SC_GUIDE)

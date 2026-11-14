@@ -1,52 +1,65 @@
 # Режимы запуска (ANSYS 21R1): что подтверждено, что нет, что остаётся ручным
 
 Документ фиксирует границу автоматизации на целевой среде: Windows, ANSYS Workbench **21R1**
-(установка `v211`), локальная лицензия. Источник фактов о режимах — `RESEARCH-ANSYS-API.md` §5
-(Workbench Scripting Guide и практика пользователей).
+(установка `v211`, сборка **21.1.0.2020110819**), локальная лицензия.
+
+Статусы — из **живых прогонов 2026-11-14 на ноутбуке владельца** и из справочника
+`RESEARCH-ANSYS-API.md`; где подтверждения нет, так и написано.
 
 ## Сводная таблица
 
-| Режим | Статус | Чем подтверждён | Что это значит для репозитория |
+| Режим / вызов | Статус | Чем подтверждён | Что это значит для репозитория |
 |---|---|---|---|
-| Batch Workbench: `runwb2 -B -F project.wbpj -R script` | **Подтверждено** | Workbench Scripting Guide (`RESEARCH-ANSYS-API.md` §5.3) | `scripts/run_ansys.bat` — штатный путь прогона |
-| Вызов Mechanical из журнала: `model.SendCommand(Language="Python", Command=...)` | **Подтверждено** | Документация Ansys + практика (§5.4) | `scripts/workbench_journal.py` использует `SendCommand` и `execfile` |
-| Mechanical без GUI внутри batch Workbench | **Подтверждено с оговоркой** | §5.4: `SendCommand` открывает Mechanical в batch по наблюдениям пользователей; batch ≠ GUI | Скрипт, работающий в GUI, может вести себя иначе в batch — проверять именно `runwb2 -B` |
-| Решение модели из журнала: `system.Solve(Wait=True)` | **Не подтверждено прогоном** | API-вызов документирован, но конкретная последовательность в нашем журнале не исполнялась | Считать рабочей гипотезой до прогона владельца |
-| Сохранение проекта из журнала | **Не подтверждено прогоном** | `project.Save()` / `Save()` — журнальные вызовы, живой прогон не делался | То же |
-| Консольный запуск SpaceClaim (headless/batch) | **Не подтверждено** | §5.1–5.4: для 21R1 подтверждения нет | В документации не обещаем; SpaceClaim-скрипты запускаются руками |
+| Batch Workbench: `runwb2 -B -F project.wbpj -R journal` | **Подтверждено** | Живой прогон: журнал исполняется, `runwb2` возвращает 0 | `scripts/run_ansys.bat` — штатный путь прогона |
+| `model.SendCommand(Language="Python", Command=...)` на контейнере `Model` | **Подтверждено с условием** | Живой прогон: команда дошла и выполнилась, **когда в проекте загружена геометрия** (`SYS.scdoc`, 5,1 МБ); на пустом проекте вызов молча вернул `None` | Основной канал доставки скрипта: `scripts/workbench_journal.py`, два `SendCommand` (настройка, затем решение+выгрузка) |
+| `GetProject()` в journal-API | **Отсутствует** | Живой прогон: `UnboundNameException: global name 'GetProject' is not defined` | Журнал не использует; проект открывается аргументом `-F` |
+| `GetAllSystems()`, `GetSystem(Name=…)`, `GetContainer(ComponentName="Model")` | **Подтверждено** | Живая диагностика API | Выбор Mechanical-системы в `workbench_journal.py` |
+| `GetProjectFile()` в journal-API | **Подтверждено** | Живая диагностика API: имя есть в globals | Путь к `.wbpj` публикуется в `ANSYS_AUTOMATION_PROJECT` — из него `ProjectContext` берёт ID проекта |
+| `Save(Overwrite=True)` в journal-API | **Подтверждено вызовом** | Живой прогон: вызов есть и проходит | Сохранение проекта в конце журнала |
+| `system.Solve()`, `system.Edit()` у `DataReference` | **Отсутствует** | Живая диагностика: методов нет | Решение выполняет `src/Mechanical/solve_and_export.py` внутри Mechanical (`Analysis.Solve(True)`), журнал только передаёт скрипт |
+| `ExtAPI.DataModel.Project.Name` как источник ID | **Непригодно** | Живой замер: `'Project'`; `GetPath()` → `'/Project'`; `Application.Name` → `None` | ID берётся из пути к `.wbpj`; имя проекта — последний шанс с предупреждением в лог |
+| ACT-расширение как канал доставки | **Откачено** | Коммиты `8d1a72c`, `89c2753`, `cb3bd1b` отменены: канал выбирали по ошибочному вердикту «`SendCommand` мёртв» — причина была в отсутствии геометрии | В репозитории ACT-кода нет; единственный канал — `SendCommand` |
+| Консольный запуск SpaceClaim (headless/batch) | **Не подтверждено** | §5.1–5.4: для 21R1 подтверждения нет | SpaceClaim-скрипты запускаются руками |
 | Standalone Mechanical (`AnsysWBU.exe -DSApplet -AppModeMech`) | **Не подтверждено для 21R1** | Документирован для 2023 R2 | Не используем |
 | PyMechanical (`batch=True`) | **Недоступно в 21R1** | Появился в 2023 R1+ | Не используем |
-| Просмотр ошибок в Console Window batch-режима | **Подтверждено** | §5.5 | Дублируем в `logs/run-*.log` |
 
 ## Подтверждено
 
 - **Batch Workbench.** `runwb2 -B -F <project> -R <script>`: `-B` — без UI, `-F` — загрузить проект,
-  `-R` — выполнить скрипт и выйти. Это единственный подтверждённый headless-путь для 21R1.
-- **`SendCommand`.** `model.SendCommand(Language="Python", Command=...)` исполняет Python-команду
-  внутри Mechanical. Наш журнал передаёт туда `execfile(r"...\src\Mechanical\ansys_automation.py")`.
+  `-R` — выполнить скрипт и выйти.
+- **`SendCommand` доставляет код в Mechanical — при загруженной геометрии.** Четыре прогона без
+  геометрии дали `None` и отсутствие эффекта; после загрузки `SYS.scdoc` та же команда выполнилась.
+  Отсюда правило: пустой проект — не доказательство мёртвого канала.
+- **Идентификатор проекта.** `Project.Name` в Mechanical — `'Project'`, `Model.Name` — `'Model'`;
+  ID (например `8946`) есть только в имени файла `.wbpj` (`Project_8946.wbpj`). Журнал читает путь
+  через `GetProjectFile()` и кладёт его в `ANSYS_AUTOMATION_PROJECT`; `ProjectContext` извлекает ID
+  из имени файла. Без переменной остаётся `Project.Name` — с предупреждением в лог.
+- **Порядок конвейера.** `SendCommand` (настройка `ansys_automation.py`) → `SendCommand`
+  (`solve_and_export.py`: `Analysis.Solve(True)`, затем `export_results.py`). CSV пишется только
+  после решения: до него `Solution` пуст. Путь файла — `ANSYS_AUTOMATION_RESULTS` или
+  `<корень проекта>/results/results.csv`, тот же, что у `ResultManager`.
 - **Собственный лог.** В batch-режиме консоль Workbench — единственный канал сообщений, поэтому
   `run_ansys.bat` перенаправляет stdout+stderr в `logs/run-<дата>-<время>.log`.
-- **Порядок конвейера.** `SendCommand` (настройка `ansys_automation.py`) → `Solve(Wait=True)` →
-  `SendCommand` (выгрузка `export_results.py`). CSV пишется только после решения: до него
-  `Solution` пуст. Путь файла — `ANSYS_AUTOMATION_RESULTS` или
-  `<корень проекта>/results/results.csv`, тот же, что у `ResultManager`.
 
 ## Не подтверждено
 
-- **SpaceClaim из консоли.** Для 21R1 нет подтверждённого способа запустить SpaceClaim-скрипт
-  headless. Поэтому два скрипта (`prepare_geometry.py`, `create_named_selections.py`) запускаются
-  вручную — см. `scripts/run_spaceclaim.md`.
-- **Конкретная последовательность журнала.** Имена вызовов (`GetProject`, `GetSystem`,
-  `GetContainer`, `Solve`, `project.Save`) взяты из документации и шаблонов журналов, но весь
-  `workbench_journal.py` на живом Workbench 21R1 ещё не исполнялся.
-- **Факт выгрузки CSV после живого решения.** Журнал проверяет `results.csv` после второго
-  `SendCommand`: нет файла или в нём только заголовок — печатается `AUTOMATION-FAILED: solve`
-  и код 1. Насколько полно `PlotData` заполняется реальным решателем 21R1, оффлайн не
-  проверить (RESEARCH-ANSYS-API §3.11).
-- **Поведение `ansys_automation.py` в batch.** Ошибка настройки печатает маркер
-  `AUTOMATION-FAILED` и пробрасывает исключение, поэтому `SendCommand` может завершиться
-  исключением. Сбой, который Mechanical только записал в свой лог, маркером не ловится —
-  такие случаи видны лишь при разборе `logs/run-*.log`.
+- **Передача `ANSYS_AUTOMATION_PROJECT` в процесс Mechanical.** Журнал пишет переменную в
+  `os.environ` до первого `SendCommand`; Mechanical запускается после и должен унаследовать
+  окружение. Если Mechanical уже поднят до журнала, переменная может не дойти — тогда
+  `ProjectContext` использует `Project.Name` и пишет предупреждение. Проверяется живым прогоном.
+- **`Analysis.Solve(True)` в `solve_and_export.py`.** Вызов документирован справочником ACT 2021 R1
+  (`act/v211`), живым прогоном нашего скрипта не проверялся.
+- **Синхронность `SendCommand`.** Вызов возвращает `None` независимо от результата, поэтому
+  единственное доказательство выгрузки — строки в `results.csv`; журнал ждёт их
+  (`ANSYS_SOLVE_WAIT_SECONDS`, по умолчанию 300 с) и без них печатает `AUTOMATION-FAILED: solve`.
+- **Факт выгрузки CSV после живого решения.** Насколько полно `PlotData` заполняется реальным
+  решателем 21R1, оффлайн не проверить (RESEARCH-ANSYS-API §3.11).
+- **SpaceClaim из консоли.** Для 21R1 нет подтверждённого headless-способа; два скрипта
+  (`prepare_geometry.py`, `create_named_selections.py`) запускаются вручную — см.
+  `scripts/run_spaceclaim.md`.
+- **Поведение `ansys_automation.py` в batch.** Ошибка настройки печатает `AUTOMATION-FAILED` и
+  пробрасывает исключение. Сбой, который Mechanical только записал в свой лог, маркером не
+  ловится — виден лишь при разборе `logs/run-*.log`.
 
 ## Ручное (и почему)
 
@@ -54,7 +67,8 @@
 |---|---|
 | Подготовка геометрии в SpaceClaim (`prepare_geometry.py`) | Консольный запуск SpaceClaim в 21R1 не подтверждён |
 | Именованные выборки в SpaceClaim (`create_named_selections.py`) | То же; результат зависит от подготовленной геометрии |
-| Первый запуск `run_ansys.bat` и разбор лога | Требуется живая лицензия, проект `.wbpj` и проверка фактических имён систем |
+| Загрузка геометрии в проект перед batch-прогоном | Без геометрии `SendCommand` молча игнорируется (живые прогоны 2026-11-14) |
+| Первый запуск `run_ansys.bat` и разбор лога | Требуется живая лицензия и проверка фактических имён систем |
 | Запуск `export_results.py` после ручного решения | В GUI-режиме журнала нет: выгрузку запускает пользователь отдельным скриптом |
 | Проверка `results.csv` и физическая интерпретация | Поведение решателя нельзя проверить оффлайн |
 

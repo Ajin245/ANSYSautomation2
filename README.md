@@ -56,11 +56,14 @@ qa-workspace/          рабочая песочница QA (в .gitignore)
    `ProjectContext`, вызывает `ContactManager`, `MeshManager`, `AnalysisManager`,
    `ValidationManager`, `ResultManager` и включает `SaveProjectBeforeSolution`. Это **только
    настройка**: CSV на этом шаге не пишется.
-4. Решение. В batch-режиме (`scripts/run_ansys.bat` → `scripts/workbench_journal.py`) его
-   запускает журнал: `system.Solve(Wait=True)`. При ручном прогоне решение запускает
-   пользователь.
+4. Решение. В batch-режиме (`scripts/run_ansys.bat` → `scripts/workbench_journal.py`) журнал
+   вторым `SendCommand` запускает `src/Mechanical/solve_and_export.py`: внутри Mechanical
+   выполняется `Analysis.Solve(True)`. У системы из журнала нет метода `Solve`, поэтому решение
+   живёт в скрипте. При ручном прогоне решение запускает пользователь.
+   Условие канала: в проекте должна быть загружена геометрия — без неё `SendCommand` молча
+   игнорируется (живые прогоны 2026-11-14).
 5. **После** решения выгрузка CSV — `src/Mechanical/export_results.py` (шаг 4 конвейера,
-   `ResultManager.export_results`). В batch её выполняет журнал вторым `SendCommand`; при
+   `ResultManager.export_results`), её же запускает `solve_and_export.py` сразу после решения; при
    ручном прогоне скрипт открывается и запускается из Mechanical после расчёта. Путь выгрузки:
    переменная окружения `ANSYS_AUTOMATION_RESULTS` (полный путь к файлу), иначе
    `output.results_csv` из `config/mechanical_configs/project_settings.json`, иначе
@@ -68,6 +71,10 @@ qa-workspace/          рабочая песочница QA (в .gitignore)
    Формат — 7 колонок `structure_id,execution,load_step,result_name,body,value,unit`.
    Журнал проверяет, что в файле есть строки данных: если после решения остался только
    заголовок, печатается `AUTOMATION-FAILED: solve` и прогон завершается с ненулевым кодом.
+
+Идентификатор проекта журнал берёт из пути к `.wbpj` (`GetProjectFile()`) и передаёт в Mechanical
+через `ANSYS_AUTOMATION_PROJECT`: в Mechanical `Project.Name` — дефолтное `Project`, ID в нём нет.
+Без этой переменной `ProjectContext` пробует `Project_XXX` из имени проекта и предупреждает в лог.
 
 Для проверки, что модули импортируются в текущем окружении, есть smoke-скрипт
 `src/Mechanical/test_simple.py`: он последовательно создаёт менеджеры и печатает статус каждого
