@@ -50,6 +50,7 @@ COMMON_CONFIGS = (
     ("contact_settings.json", "contact_settings"),
     ("analysis_scenarios.json", "analysis_scenarios"),
     ("project_settings.json", "project_settings"),
+    ("bolt_pretension.json", "bolt_pretension"),
 )
 
 # Путь к .wbpj, который журнал Workbench передаёт в Mechanical через окружение

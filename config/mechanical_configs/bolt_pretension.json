@@ -1,0 +1,29 @@
+{
+  "_comment": "Сила затяжки болтов по номинальному диаметру резьбы (мм). Единственный источник преднатяга (Q10): structure_type_XXX.json больше не хранит torque_nm. Значения — из инженерной таблицы владельца (момент затяжки M_кл и сила F_зат).",
+  "_units": {
+    "diameter_mm": "мм",
+    "torque_nm": "Н·м",
+    "pretension_n": "Н"
+  },
+  "default": {
+    "_comment": "Применяется, если диаметр болта не найден в by_diameter_mm. Значение владельца по умолчанию (M30).",
+    "pretension_n": 31532,
+    "torque_nm": 350
+  },
+  "by_diameter_mm": {
+    "5": {"thread": "M5", "torque_nm": 2.4, "pretension_n": 1297},
+    "6": {"thread": "M6", "torque_nm": 3, "pretension_n": 1351},
+    "8": {"thread": "M8", "torque_nm": 6, "pretension_n": 2027},
+    "10": {"thread": "M10", "torque_nm": 9, "pretension_n": 2432},
+    "12": {"thread": "M12", "torque_nm": 15, "pretension_n": 3378},
+    "16": {"thread": "M16", "torque_nm": 35, "pretension_n": 5912},
+    "20": {"thread": "M20", "torque_nm": 100, "pretension_n": 13514},
+    "24": {"thread": "M24", "torque_nm": 180, "pretension_n": 20270},
+    "30": {"thread": "M30", "torque_nm": 350, "pretension_n": 31532},
+    "36": {"thread": "M36", "torque_nm": 600, "pretension_n": 45045},
+    "42": {"thread": "M42", "torque_nm": 900, "pretension_n": 57915},
+    "48": {"thread": "M48", "torque_nm": 1100, "pretension_n": 61937},
+    "56": {"thread": "M56", "torque_nm": 1200, "pretension_n": 57915},
+    "64": {"thread": "M64", "torque_nm": 1200, "pretension_n": 50676}
+  }
+}

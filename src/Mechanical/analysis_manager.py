@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from Mechanical.bolt_manager import BoltManager
+from Mechanical import execution_parser
 
 
 # Значение ``remote_displacement`` бывает двух видов: строка — имя Named
@@ -97,30 +98,23 @@ class AnalysisManager:
         self.log.info(u"Настройка условий анализа завершена.")
 
     def _setup_analysis_settings(self):
-        """
-        Настраивает количество шагов и параметры решателя на основе выбранного сценария.
-        """
-        try:
-            scenario_name = "standard_sequence" # Можно сделать динамическим
-            scenario = self.context.configs.get("analysis_scenarios", {}).get(scenario_name)
-            
-            if not scenario:
-                self.log.warning(u"Сценарий анализа '{0}' не найден.".format(scenario_name))
-                return
+        """Задаёт число шагов (по числу режимов в конфиге) и параметры решателя."""
+        scenario_name = "standard_sequence"
+        scenario = self.context.configs.get("analysis_scenarios", {}).get(scenario_name) or {}
 
-            settings = self.analysis.AnalysisSettings
-            steps = scenario.get("steps", 3) # Устанавливаем 3 шага, как в конфиге
-            settings.NumberOfSteps = steps
-            
-            # Настройка параметров решателя
-            solver_params = scenario.get("analysis_settings", {})
-            if "large_deflection" in solver_params:
-                settings.LargeDeflection = solver_params["large_deflection"]
-            
-            self.log.info(u"Настроено шагов анализа: {0}".format(steps))
-            
-        except Exception as e:
-            self.log.warning(u"Ошибка при настройке параметров анализа: {0}".format(e))
+        struct_config = self.context.configs.get("structure_type", {}) or {}
+        execution_no = getattr(self.context, "execution_no", None)
+        cases = execution_parser.select_load_cases(struct_config, execution_no)
+
+        settings = self.analysis.AnalysisSettings
+        settings.NumberOfSteps = len(cases)
+
+        solver_params = scenario.get("analysis_settings", {}) or {}
+        if "large_deflection" in solver_params:
+            settings.LargeDeflection = solver_params["large_deflection"]
+
+        self.log.info(u"Настроено шагов анализа: {0} ({1})".format(
+            len(cases), u", ".join(name for name, _values in cases)))
 
     def _apply_boundary_conditions(self):
         """
@@ -250,62 +244,129 @@ class AnalysisManager:
         except Exception as e:
             self.log.warning(u"Ошибка при применении Remote Displacement: {0}".format(e))
 
+    # Методы создания момента, которые встречаются в разных релизах Mechanical.
+    # Порядок — от наиболее вероятного; отсутствие всех = ошибка конфига.
+    MOMENT_METHODS = ("AddMoment", "AddMomentLoad", "AddRemoteMoment")
+
     def _apply_loads(self):
+        """Применяет силы (и моменты, если они есть в конфиге) по шагам.
+
+        Схема конфига: ``loads[<исполнение>].cases = {НУЭ: {...}, НУЭ+ПЗ: {...}}``;
+        число шагов анализа равно числу режимов. Если нагрузок для исполнения
+        нет — это ошибка, а не предупреждение: расчёт без нагрузок не имеет
+        смысла (решение владельца, 2026-11-14).
         """
-        Применяет силы на основе конфигурации для NS 'gu_force' с учетом шагов нагружения.
-        """
+        struct_config = self.context.configs.get("structure_type", {}) or {}
+        project_settings = self.context.configs.get("project_settings", {}) or {}
+        load_ns_map = project_settings.get("load_named_selections", {}) or {}
+        force_ns_name = load_ns_map.get("force", u"gu_force")
+        moment_ns_name = load_ns_map.get("moment", u"gu_moment")
+
+        execution_no = getattr(self.context, "execution_no", None)
+        cases = execution_parser.select_load_cases(struct_config, execution_no)
+
+        Quantity = self.context.Quantity
+        if not Quantity:
+            raise ValueError(u"Класс Quantity не доступен в контексте ProjectContext.")
+
+        ns_force = self._get_named_selection(force_ns_name)
+        if ns_force is None:
+            raise ValueError(
+                u"Named Selection '{0}' для силы не найдена в модели (имя задаётся "
+                u"в project_settings.load_named_selections.force).".format(force_ns_name))
+
+        steps = len(cases)
+        time_points = [Quantity(i, "s") for i in range(1, steps + 1)]
+
+        force = self.analysis.AddForce()
+        force.Location = ns_force
+        self._set_define_by(force)
+
+        x_component = force.XComponent
+        y_component = force.YComponent
+        z_component = force.ZComponent
+        for axis, component in (("fx", x_component), ("fy", y_component),
+                                ("fz", z_component)):
+            values = [Quantity((case_values or {}).get(axis, 0), "N")
+                      for _name, case_values in cases]
+            component.Inputs[0].DiscreteValues = time_points
+            component.Output.DiscreteValues = values
+
+        self.log.info(u"Нагрузки для '{0}' (исполнение {1}, шагов {2}): {3}".format(
+            force_ns_name, execution_no, steps,
+            u", ".join(u"{0}={1},{2},{3}".format(
+                name,
+                (values or {}).get("fx", 0),
+                (values or {}).get("fy", 0),
+                (values or {}).get("fz", 0)) for name, values in cases)))
+
+        if self._cases_have_moments(cases):
+            self._apply_moments(cases, moment_ns_name, time_points)
+
+    def _set_define_by(self, load_object):
+        """Выставляет ``DefineBy = Components``, если перечисление доступно."""
+        load_define_by = self.context.enums.get("LoadDefineBy")
+        if load_define_by:
+            load_object.DefineBy = load_define_by.Components
+            return
         try:
-            struct_config = self.context.configs.get("structure_type", {})
-            loads_config = struct_config.get("loads", {})
-            scenario = self.context.configs.get("analysis_scenarios", {}).get("standard_sequence", {})
-            Quantity = self.context.Quantity
-            
-            # Определяем номер исполнения из контекста
-            execution_no = getattr(self.context, "execution_no", None)
-            if not execution_no or execution_no not in loads_config:
-                self.log.warning(u"Данные нагрузок для исполнения {0} не найдены.".format(execution_no))
-                return
+            from Ansys.Mechanical.DataModel.Enums import LoadDefineBy
+            load_object.DefineBy = LoadDefineBy.Components
+        except ImportError:
+            self.log.error(u"Enum LoadDefineBy не доступен.")
 
-            forces = loads_config[execution_no].get("nominal_forces", {})
-            load_factors = scenario.get("load_factors", [1.0])
-            ns_obj = self._get_named_selection("gu_force")
-            
-            if ns_obj and forces:
-                force = self.analysis.AddForce()
-                force.Location = ns_obj
+    def _cases_have_moments(self, cases):
+        """True, если хотя бы в одном режиме заданы моменты."""
+        for _name, values in cases:
+            values = values or {}
+            for axis in ("mx", "my", "mz"):
+                if values.get(axis):
+                    return True
+        return False
 
-                load_define_by = self.context.enums.get("LoadDefineBy")
-                if load_define_by:
-                    force.DefineBy = load_define_by.Components
-                else:
-                    try:
-                        from Ansys.Mechanical.DataModel.Enums import LoadDefineBy
-                        force.DefineBy = LoadDefineBy.Components
-                    except ImportError:
-                        self.log.error(u"Enum LoadDefineBy не доступен.")
-                
-                steps = int(self.analysis.AnalysisSettings.NumberOfSteps)
-                time_points = [Quantity(i, "s") for i in range(steps + 1)]
-                
-                # Добавляем 0 шаг [0.0] + остальные факторы из сценария [0.5, 1.0, 1.5]
-                factors = [0.0] + load_factors
-                
-                # Настройка компонентов силы
-                for axis, component in [("fx", force.XComponent), 
-                                       ("fy", force.YComponent), 
-                                       ("fz", force.ZComponent)]:
-                    nominal_val = forces.get(axis, 0)
-                    output_values = [Quantity(nominal_val * f, "N") for f in factors]
-                    
-                    component.Inputs[0].DiscreteValues = time_points
-                    component.Output.DiscreteValues = output_values
-                
-                self.log.info(u"Нагрузка Force задана для 'gu_force' (FX:{0}, FY:{1}, FZ:{2}, Factors:{3})".format(forces.get("fx"), forces.get("fy"), forces.get("fz"), factors))
-            else:
-                self.log.warning(u"Не удалось настроить нагрузку: NS 'gu_force' или данные сил отсутствуют.")
-                    
-        except Exception as e:
-            self.log.warning(u"Ошибка при применении нагрузок: {0}".format(e))
+    def _apply_moments(self, cases, moment_ns_name, time_points):
+        """Применяет моменты: только если они есть в конфиге."""
+        ns_moment = self._get_named_selection(moment_ns_name)
+        if ns_moment is None:
+            raise ValueError(
+                u"В конфиге заданы моменты, но Named Selection '{0}' не найдена "
+                u"(имя задаётся в project_settings.load_named_selections.moment).".format(moment_ns_name))
+
+        method = None
+        for name in self.MOMENT_METHODS:
+            if hasattr(self.analysis, name):
+                method = getattr(self.analysis, name)
+                break
+        if method is None:
+            raise ValueError(
+                u"В конфиге заданы моменты, но в этой версии Mechanical нет метода "
+                u"их создания (проверены: {0}).".format(", ".join(self.MOMENT_METHODS)))
+
+        Quantity = self.context.Quantity
+        moment = method()
+        moment.Location = ns_moment
+        self._set_define_by(moment)
+
+        assigned = 0
+        for axis, attribute in (("mx", "XComponent"), ("my", "YComponent"),
+                                ("mz", "ZComponent")):
+            if not hasattr(moment, attribute):
+                continue
+            component = getattr(moment, attribute)
+            values = [Quantity((case_values or {}).get(axis, 0), "N mm")
+                      for _name, case_values in cases]
+            component.Inputs[0].DiscreteValues = time_points
+            component.Output.DiscreteValues = values
+            assigned += 1
+
+        if assigned == 0:
+            raise ValueError(
+                u"Объект момента создан, но у него нет компонент X/Y/Z; "
+                u"задание моментов в этой сборке не подтверждено.")
+
+        self.log.info(u"Моменты заданы на '{0}' (компонент: {1}).".format(
+            moment_ns_name, assigned))
+
 
     def _get_named_selection(self, name):
         """

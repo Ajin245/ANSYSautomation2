@@ -148,3 +148,53 @@ def select_loads(structure_type, execution):
         if str(stored_key) == key:
             return loads[stored_key]
     return None
+
+
+# Порядок шагов нагружения: НУЭ первым, НУЭ+ПЗ вторым, остальные — по алфавиту.
+CASE_ORDER = ("НУЭ", "НУЭ+ПЗ")
+
+
+def select_load_cases(structure_type, execution):
+    """Шаги нагружения исполнения в порядке применения.
+
+    Схема конфига (решение владельца 2026-11-14)::
+
+        "loads": {"08": {"cases": {"НУЭ": {...}, "НУЭ+ПЗ": {...}}}}
+
+    Старая схема ``{"nominal_forces": {...}}`` читается как один шаг ``НУЭ``,
+    чтобы конфиги 10558 не ломались.
+
+    Args:
+        structure_type (dict): конфиг конструкции.
+        execution (str|int): номер исполнения.
+
+    Returns:
+        list: список пар ``(имя_шага, dict со значениями)``; число шагов равно
+        числу режимов в ``cases``.
+
+    Raises:
+        ValueError: исполнения нет в ``loads`` или в нём нет ни ``cases``,
+            ни ``nominal_forces``. Решение владельца: без нагрузок расчёт не
+            имеет смысла, поэтому это остановка, а не предупреждение.
+    """
+    entry = select_loads(structure_type, execution)
+    if entry is None:
+        raise ValueError(
+            u"Нагрузки для исполнения '{0}' не найдены в конфиге конструкции "
+            u"'{1}'".format(execution, (structure_type or {}).get(
+                "structure_info", {}).get("id")))
+
+    cases = entry.get("cases")
+    if isinstance(cases, dict) and cases:
+        ordered = [name for name in CASE_ORDER if name in cases]
+        ordered += sorted(name for name in cases.keys() if name not in CASE_ORDER)
+        return [(name, cases[name] or {}) for name in ordered]
+
+    nominal = entry.get("nominal_forces")
+    if isinstance(nominal, dict) and nominal:
+        return [(u"НУЭ", nominal)]
+
+    raise ValueError(
+        u"У исполнения '{0}' нет ни 'cases', ни 'nominal_forces' в конфиге "
+        u"конструкции".format(execution))
+

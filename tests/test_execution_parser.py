@@ -84,8 +84,14 @@ class ExecutionParserTestCase(unittest.TestCase):
             handle.close()
 
         loads = ep.select_loads(structure_type, '8')
-        self.assertEqual(loads['nominal_forces']['fx'], 1000)
+        self.assertEqual(loads['cases']['НУЭ']['fx'], 1000)
         self.assertIsNone(ep.select_loads(structure_type, '99'))
+
+        cases = ep.select_load_cases(structure_type, '8')
+        self.assertEqual([name for name, _values in cases], ['НУЭ', 'НУЭ+ПЗ'])
+        self.assertEqual(cases[1][1]['fz'], -4950)
+        with self.assertRaises(ValueError):
+            ep.select_load_cases(structure_type, '99')
 
 
 if __name__ == '__main__':

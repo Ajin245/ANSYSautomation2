@@ -318,11 +318,36 @@ class FakeConnections(object):
         self.Children = [FakeContactGroup(contacts)] if contacts else []
 
 
+class FakeBody(object):
+    """Двойник тела геометрии: только имя (болты ``mbolt<d>``)."""
+
+    def __init__(self, name):
+        self.Name = name
+
+
+class FakeGeometry(object):
+    def __init__(self, bodies=None):
+        self.Children = FakeCollection(FakeBody(name) for name in (bodies or []))
+
+
+class FakeForce(object):
+    """Двойник объекта ``Force``: компоненты X/Y/Z и ``Location``."""
+
+    def __init__(self):
+        self.Name = None
+        self.Location = None
+        self.DefineBy = None
+        self.XComponent = FakeComponent()
+        self.YComponent = FakeComponent()
+        self.ZComponent = FakeComponent()
+
+
 class FakeModel(object):
-    def __init__(self, ns_names, contacts=None):
+    def __init__(self, ns_names, contacts=None, bodies=None):
         self.NamedSelections = FakeNamedSelections(ns_names)
         self.Mesh = FakeMesh()
         self.Connections = FakeConnections(contacts or [])
+        self.Geometry = FakeGeometry(bodies or [])
 
 
 class FakeAnalysis(object):
@@ -334,6 +359,12 @@ class FakeAnalysis(object):
         self.bolts = []
         self.remote_displacements = []
         self.fixed_supports = []
+        self.forces = []
+
+    def AddForce(self):
+        force = FakeForce()
+        self.forces.append(force)
+        return force
 
     def AddBoltPretension(self):
         bolt = FakeBoltPretension()
@@ -377,7 +408,8 @@ class FakeContext(object):
     def __init__(self, ns_names=None, torque=None, steps=3, solution=None,
                  structure_type_id="8946", execution_no="08", analysis=True,
                  boundary_conditions=None, contact_settings=None,
-                 mesh_config=None, project_settings=None, contacts=None):
+                 mesh_config=None, project_settings=None, contacts=None,
+                 bodies=None, loads=None, bolt_pretension=None):
         self.log = FakeLog()
         self.Quantity = FakeQuantity
         self.enums = {
@@ -386,13 +418,28 @@ class FakeContext(object):
             "MeshMethodAlgorithm": FakeMeshMethodAlgorithm,
             "ElementOrder": FakeElementOrder,
         }
-        self.model = FakeModel(ns_names or [], contacts=contacts)
+        self.model = FakeModel(ns_names or [], contacts=contacts, bodies=bodies)
         self.analysis = FakeAnalysis(steps=steps, solution=solution) if analysis else None
         self.ext_api = FakeExtApi()
-        structure_type = {"torque_nm": torque or {}}
+        structure_type = {
+            "loads": loads if loads is not None else {
+                execution_no or "08": {
+                    "cases": {
+                        "НУЭ": {"fx": 1000, "fy": 1700, "fz": -3300},
+                        "НУЭ+ПЗ": {"fx": 1500, "fy": 2550, "fz": -4950},
+                    }
+                }
+            }
+        }
+        if torque is not None:
+            # Устаревший источник преднатяга: оставлен, чтобы тесты могли
+            # проверить, что он больше не используется.
+            structure_type["torque_nm"] = torque
         if boundary_conditions is not None:
             structure_type["boundary_conditions"] = boundary_conditions
         self.configs = {"structure_type": structure_type}
+        if bolt_pretension is not None:
+            self.configs["bolt_pretension"] = bolt_pretension
         if contact_settings is not None:
             self.configs["contact_settings"] = contact_settings
         if mesh_config is not None:
@@ -412,71 +459,85 @@ def _read_text(path):
 
 
 class BoltManagerTestCase(unittest.TestCase):
-    """BoltManager: преднатяг по моменту для gu_bolt*_f."""
+    """BoltManager: преднатяг по таблице болтов для тел ``mbolt*``."""
 
-    def test_creates_pretension_for_gu_bolt_named_selection(self):
-        context = FakeContext(ns_names=["gu_fixed", "mbolt8", "gu_bolt8_f"],
-                              torque={"8": 11.8}, steps=3)
+    BOLT_CONFIG = {
+        "default": {"pretension_n": 31532, "torque_nm": 350},
+        "by_diameter_mm": {
+            "8": {"thread": "M8", "torque_nm": 6, "pretension_n": 2027},
+            "10": {"thread": "M10", "torque_nm": 9, "pretension_n": 2432},
+        },
+    }
+
+    def test_creates_pretension_when_bolt_bodies_present(self):
+        context = FakeContext(ns_names=["gu_fixed", "gu_bolt1_f"],
+                              bodies=["opora", "mbolt8"],
+                              bolt_pretension=self.BOLT_CONFIG, steps=3)
         BoltManager(context).setup_bolt_pretensions()
 
         bolts = context.analysis.bolts
         self.assertEqual(len(bolts), 1)
         bolt = bolts[0]
-        self.assertEqual(bolt.Name, "Bolt_gu_bolt8_f")
-        self.assertEqual(bolt.Location.Name, "gu_bolt8_f")
-        # 11.8 / (0.37 * 8 / 1000) = 3986.48... Н (формула из pretension.py, Q6).
-        self.assertEqual(len(bolt.Preload.Output.values), 1)
+        self.assertEqual(bolt.Name, "Bolt_gu_bolt1_f")
+        self.assertEqual(bolt.Location.Name, "gu_bolt1_f")
         index, quantity = bolt.Preload.Output.values[0]
         self.assertEqual(index, 0)
-        self.assertAlmostEqual(quantity.value, 3986.5, delta=0.1)
+        self.assertAlmostEqual(quantity.value, 2027.0, delta=0.1)
         self.assertEqual(quantity.unit, "N")
         self.assertEqual(bolt.define_by_calls, [(2, "LOCK"), (3, "LOCK")])
 
-    def test_one_pretension_per_bolt_named_selection(self):
-        context = FakeContext(ns_names=["gu_bolt8_f", "gu_bolt10_f"],
-                              torque={"8": 11.8, "10": 18.5}, steps=2)
-        BoltManager(context).setup_bolt_pretensions()
-
-        self.assertEqual([bolt.Location.Name for bolt in context.analysis.bolts],
-                         ["gu_bolt8_f", "gu_bolt10_f"])
-        self.assertAlmostEqual(context.analysis.bolts[0].Preload.Output.values[0][1].value,
-                               3986.5, delta=0.1)
-        self.assertAlmostEqual(context.analysis.bolts[1].Preload.Output.values[0][1].value,
-                               5000.0, delta=0.1)
-
-    def test_ignores_named_selections_outside_pattern(self):
-        context = FakeContext(ns_names=["gu_fixed", "gu_force", "gu_bolt8"],
-                              torque={"8": 11.8})
-        BoltManager(context).setup_bolt_pretensions()
-
-        self.assertEqual(context.analysis.bolts, [])
-        self.assertTrue(context.log.has("debug"))
-
-    def test_single_step_has_no_lock_calls(self):
-        context = FakeContext(ns_names=["mbolt8", "gu_bolt8_f"],
-                              torque={"8": 11.8}, steps=1)
+    def test_uses_default_when_diameter_not_in_table(self):
+        context = FakeContext(ns_names=["gu_bolt1_f"], bodies=["mbolt33"],
+                              bolt_pretension=self.BOLT_CONFIG, steps=2)
         BoltManager(context).setup_bolt_pretensions()
 
         self.assertEqual(len(context.analysis.bolts), 1)
-        self.assertEqual(context.analysis.bolts[0].define_by_calls, [])
+        quantity = context.analysis.bolts[0].Preload.Output.values[0][1]
+        self.assertAlmostEqual(quantity.value, 31532.0, delta=0.1)
 
-    def test_missing_diameter_skips_bolts(self):
-        context = FakeContext(ns_names=["gu_bolt_f"], torque={"8": 11.8})
+    def test_no_bolt_bodies_logs_warning(self):
+        context = FakeContext(ns_names=["gu_bolt1_f"], bodies=["opora", "truba88"],
+                              bolt_pretension=self.BOLT_CONFIG)
+        BoltManager(context).setup_bolt_pretensions()
+
+        self.assertEqual(context.analysis.bolts, [])
+        self.assertTrue(context.log.has("warning", "mbolt"))
+
+    def test_no_bolt_named_selection_logs_warning(self):
+        context = FakeContext(ns_names=["gu_fixed", "gu_force"], bodies=["mbolt8"],
+                              bolt_pretension=self.BOLT_CONFIG)
+        BoltManager(context).setup_bolt_pretensions()
+
+        self.assertEqual(context.analysis.bolts, [])
+        self.assertTrue(context.log.has("warning", "gu_bolt"))
+
+    def test_multiple_diameters_logs_warning(self):
+        context = FakeContext(ns_names=["gu_bolt1_f"], bodies=["mbolt8", "mbolt10"],
+                              bolt_pretension=self.BOLT_CONFIG)
         BoltManager(context).setup_bolt_pretensions()
 
         self.assertEqual(context.analysis.bolts, [])
         self.assertTrue(context.log.has("warning", "диаметр"))
 
-    def test_missing_torque_skips_bolt(self):
-        context = FakeContext(ns_names=["mbolt8", "gu_bolt8_f"], torque={})
+    def test_without_bolt_config_logs_warning(self):
+        context = FakeContext(ns_names=["gu_bolt1_f"], bodies=["mbolt8"],
+                              torque={"8": 11.8})
         BoltManager(context).setup_bolt_pretensions()
 
         self.assertEqual(context.analysis.bolts, [])
-        self.assertTrue(context.log.has("warning", "Момент затяжки"))
+        self.assertTrue(context.log.has("warning", "затяжки"))
+
+    def test_single_step_has_no_lock_calls(self):
+        context = FakeContext(ns_names=["gu_bolt1_f"], bodies=["mbolt8"],
+                              bolt_pretension=self.BOLT_CONFIG, steps=1)
+        BoltManager(context).setup_bolt_pretensions()
+
+        self.assertEqual(len(context.analysis.bolts), 1)
+        self.assertEqual(context.analysis.bolts[0].define_by_calls, [])
 
     def test_without_analysis_logs_error_and_returns(self):
-        context = FakeContext(ns_names=["mbolt8", "gu_bolt8_f"],
-                              torque={"8": 11.8}, analysis=False)
+        context = FakeContext(ns_names=["gu_bolt1_f"], bodies=["mbolt8"],
+                              bolt_pretension=self.BOLT_CONFIG, analysis=False)
         BoltManager(context).setup_bolt_pretensions()
 
         self.assertTrue(context.log.has("error"))
@@ -491,7 +552,7 @@ class RemoteDisplacementTestCase(unittest.TestCase):
     """FR-6: ``remote_displacement`` строкой (8946) и словарём."""
 
     def _context(self, remote_config, ns_names=None):
-        return FakeContext(ns_names=ns_names or ["gu_fixed", "gu_remote_disp"],
+        return FakeContext(ns_names=ns_names or ["gu_fixed", "gu_force", "gu_remote_disp"],
                            boundary_conditions={"fixed_support": "gu_fixed",
                                                 "remote_displacement": remote_config})
 
@@ -527,16 +588,17 @@ class RemoteDisplacementTestCase(unittest.TestCase):
 
         remote = context.analysis.remote_displacements[0]
         self.assertEqual(remote.Location.Name, "gu_remote_disp")
-        self.assertEqual(len(remote.RotationX.Output.DiscreteValues), 4)  # steps=3 -> 0..3
+        # Шагов столько, сколько режимов в конфиге: НУЭ + НУЭ+ПЗ -> точки 0..2.
+        self.assertEqual(len(remote.RotationX.Output.DiscreteValues), 3)
         self.assertEqual(remote.RotationX.Output.DiscreteValues[0].value, 0.1)
         self.assertEqual(remote.RotationX.Output.DiscreteValues[0].unit, "rad")
-        self.assertEqual(len(remote.ZComponent.Output.DiscreteValues), 4)
+        self.assertEqual(len(remote.ZComponent.Output.DiscreteValues), 3)
         self.assertEqual(remote.ZComponent.Output.DiscreteValues[0].value, 2.0)
         self.assertEqual(remote.ZComponent.Output.DiscreteValues[0].unit, "mm")
         self.assertIsNone(remote.YComponent.Output.DiscreteValues)
 
     def test_missing_named_selection_logs_warning_without_remote(self):
-        context = FakeContext(ns_names=["gu_fixed"],
+        context = FakeContext(ns_names=["gu_fixed", "gu_force"],
                               boundary_conditions={"remote_displacement": "gu_remote_disp"})
 
         AnalysisManager(context).apply_boundary_conditions_and_loads()

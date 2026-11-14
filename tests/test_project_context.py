@@ -351,7 +351,7 @@ class ProjectContextTestCase(unittest.TestCase):
         self.assertIsNone(context.execution_no)
         self.assertEqual(set(context.configs.keys()),
                          {"mesh_config", "contact_settings", "analysis_scenarios",
-                          "project_settings", "structure_type", "merged"})
+                          "project_settings", "bolt_pretension", "structure_type", "merged"})
 
     def test_project_name_is_last_resort_with_warning(self):
         # Приоритет 2: Project.Name годится, только если в нём есть Project_XXX.
@@ -433,12 +433,12 @@ class ProjectContextTestCase(unittest.TestCase):
         self.assertEqual(context.pipe_diameter, "245")
 
     # --- конфиги (FR-3) ------------------------------------------------------
-    def test_configs_contain_four_common_and_structure(self):
+    def test_configs_contain_common_and_structure(self):
         self._use_root(self._make_root())
         context = self._context()
 
         expected = {"mesh_config", "contact_settings", "analysis_scenarios",
-                    "project_settings", "structure_type", "merged"}
+                    "project_settings", "bolt_pretension", "structure_type", "merged"}
         self.assertEqual(set(context.configs.keys()), expected)
         self.assertEqual(context.configs["structure_type"]["structure_info"]["id"], "8946")
 
@@ -447,7 +447,7 @@ class ProjectContextTestCase(unittest.TestCase):
         context = self._context()
         merged = context.configs["merged"]
 
-        for key in ("structure_info", "loads", "torque_nm",
+        for key in ("structure_info", "loads", "boundary_conditions",
                     "boundary_conditions", "spaceclaim_processing"):
             self.assertIn(key, merged)
         for key in ("mesh_settings", "contact_settings", "project", "standard_sequence"):
@@ -556,7 +556,7 @@ class ProjectContextTestCase(unittest.TestCase):
 
         self.assertEqual(set(context.configs.keys()),
                          {"mesh_config", "contact_settings", "analysis_scenarios",
-                          "project_settings", "structure_type", "merged"})
+                          "project_settings", "bolt_pretension", "structure_type", "merged"})
         self.assertEqual(context.configs["mesh_config"]["mesh_settings"]["mbolt"]["meshCoef"], 6.7)
 
     def test_logger_writes_to_ansys_log(self):

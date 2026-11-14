@@ -1,34 +1,41 @@
 # -*- coding: utf-8 -*-
 """Преднатяг болтов (FR-8).
 
-Логика извлечена из ``v2/src/Mechanical/analysis_manager.py:229-292``
-(``_setup_bolt_pretensions`` и ``_create_bolt_pretension``). Идея отдельного
-менеджера и шаблон имени Named Selection ``gu_bolt*_f`` — из
-``v1/managers/bolt_manager.py:9-67``; ``bolt_database`` v1 не используется
-(Q10): единственный источник момента затяжки — ``structure_type_XXX.json ->
-torque_nm``.
+Источник преднатяга — конфиг болтов ``config/mechanical_configs/bolt_pretension.json``
+(решение владельца 2026-11-14): там статичная таблица «диаметр резьбы → сила
+затяжки» и значение ``default`` для диаметров, которых в таблице нет.
+``torque_nm`` в ``structure_type_XXX.json`` больше не используется.
 
-Формула преднатяга живёт только в ``pretension.py`` (Q6, ветвь A):
-``T / (0.37 * d / 1000)``. Здесь — ANSYS-обвязка и ничего больше, чтобы формула
-не разъезжалась между модулями.
+Правила (решения владельца):
 
-В 21R1 ``BoltLoadDefineBy`` не содержит ``Torque`` (RESEARCH-ANSYS-API §3.10),
-поэтому момент заранее пересчитывается в силу, а в API уходит уже ``Quantity``
-в ньютонах; начиная со второго шага болт блокируется (``Lock``), как в v2.
+* **основная проверка** — в геометрии есть тела болтов с именем ``mbolt<d>``
+  (``mbolt10`` → резьба 10 мм). Нет таких тел — преднатяг не задаётся, в лог
+  идёт предупреждение (это не ошибка расчёта);
+* Named Selection ``gu_bolt<N>_f`` приходит из SpaceClaim и служит только
+  поверхностью приложения нагрузки — номер в имени ничего не значит и для
+  вычислений не нужен;
+* диаметр берётся из имени тела болта, а не из имени Named Selection;
+* шаг 1 — затяжка, шаги 2..N — ``Lock`` (поведение v2).
+
+Модуль работает в ANSYS (Python 2.7 / IronPython), поэтому без f-строк,
+``print`` без скобок допустим, ``.iteritems()`` вместо ``.items()``.
 """
 
 from Mechanical import pretension
 
-# Имена NS болтов в Mechanical: gu_bolt..._f (v1 и v2 используют один шаблон).
+# Имена NS болтов: gu_bolt<N>_f — поверхность приложения нагрузки.
 BOLT_NS_PREFIX = "gu_bolt"
 BOLT_NS_SUFFIX = "_f"
 
-# С какого шага болт блокируется: шаг 1 — затяжка, шаги 2..N — Lock (v2:283-285).
+# Префикс имён тел болтов: mbolt10 -> резьба 10 мм.
+BOLT_BODY_PREFIX = "mbolt"
+
+# С какого шага болт блокируется: шаг 1 — затяжка, шаги 2..N — Lock.
 LOCK_FROM_STEP = 2
 
 
 class BoltManager(object):
-    """Создаёт объекты Bolt Pretension по моменту затяжки из конфига."""
+    """Создаёт объекты Bolt Pretension по силе затяжки из конфига болтов."""
 
     def __init__(self, context):
         """Инициализация менеджера болтов.
@@ -42,62 +49,82 @@ class BoltManager(object):
         self.model = context.model
 
     def setup_bolt_pretensions(self):
-        """Настраивает преднатяг всех болтов ``gu_bolt*_f``.
-
-        Момент берётся из ``structure_type.torque_nm`` по диаметру болта, диаметр —
-        из имени Named Selection (``mbolt8`` или ``gu_bolt8_f``); сама формула —
-        ``pretension.torque_to_pretension``.
-        """
+        """Настраивает преднатяг болтов, если в модели есть тела ``mbolt*``."""
         if not self.analysis:
             self.log.error(u"Объект Analysis не найден. Преднатяг болтов невозможен.")
             return
 
+        bolt_bodies = self._bolt_bodies()
+        if not bolt_bodies:
+            self.log.warning(
+                u"Тела болтов с именем 'mbolt*' не найдены: преднатяг не задаётся.")
+            return
+
+        ns_objects = [ns for ns in self._named_selections() if self._is_bolt_ns(ns)]
+        if not ns_objects:
+            self.log.warning(
+                u"Named Selections 'gu_bolt*_f' не найдены: преднатяг не задаётся.")
+            return
+
+        diameters = sorted(set(diameter for _name, diameter in bolt_bodies))
+        if len(diameters) > 1:
+            self.log.warning(
+                u"В модели болты разных диаметров {0}: автоматическое сопоставление "
+                u"тела и Named Selection не реализовано, преднатяг не задан.".format(
+                    diameters))
+            return
+
+        diameter = diameters[0]
+        config = self.context.configs.get("bolt_pretension", {}) or {}
+        preload_n, source = pretension.select_pretension(config, diameter)
+        if preload_n is None:
+            self.log.warning(
+                u"Для диаметра {0} мм нет силы затяжки ни в таблице, ни в default — "
+                u"преднатяг не задан.".format(diameter))
+            return
+
+        self.log.info(
+            u"Болты: диаметр {0} мм, сила затяжки {1} Н ({2}), тел {3}, NS {4}.".format(
+                diameter, preload_n, source, len(bolt_bodies), len(ns_objects)))
+
+        for ns_obj in ns_objects:
+            self._create_bolt_pretension(ns_obj, preload_n, diameter)
+
+    def _bolt_bodies(self):
+        """Список пар ``(имя тела, диаметр)`` по телам ``mbolt<d>``."""
+        bodies = []
+        if not self.model:
+            return bodies
+
         try:
-            ns_objects = self._named_selections()
-            bolt_ns = [ns for ns in ns_objects if self._is_bolt_ns(ns)]
-            if not bolt_ns:
-                self.log.debug(u"Named Selections болтов (gu_bolt*_f) не найдены.")
-                return
+            children = self.model.Geometry.Children
+        except Exception as exc:
+            self.log.warning(u"Геометрия недоступна: {0}".format(exc))
+            return bodies
 
-            torque_data = self.context.configs.get("structure_type", {}).get("torque_nm", {})
-            # v2 брал один диаметр из первого NS с mboltNN и применял его ко всем
-            # болтам. Здесь диаметр сначала ищется в имени самого болта, и только
-            # если его там нет — берётся общий по модели (поведение v2).
-            default_diameter = pretension.select_bolt_diameter(ns_objects)
+        for body in children or []:
+            name = getattr(body, "Name", u"") or u""
+            diameter = self._diameter_from_body(name)
+            if diameter is not None:
+                bodies.append((name, diameter))
+        return bodies
 
-            for ns_obj in bolt_ns:
-                self._setup_single_bolt(ns_obj, torque_data, default_diameter)
+    def _diameter_from_body(self, name):
+        """Диаметр резьбы из имени тела ``mbolt<d>`` (``None``, если не оно)."""
+        lowered = (name or u"").lower()
+        if not lowered.startswith(BOLT_BODY_PREFIX):
+            return None
+        digits = u""
+        for char in lowered[len(BOLT_BODY_PREFIX):]:
+            if char.isdigit():
+                digits += char
+            else:
+                break
+        if not digits:
+            return None
+        return int(digits)
 
-        except Exception as e:
-            self.log.warning(u"Ошибка при настройке болтов: {0}".format(e))
-
-    def _setup_single_bolt(self, ns_obj, torque_data, default_diameter):
-        """Считает преднатяг для одного болта и создаёт ``BoltPretension``."""
-        try:
-            diameter = pretension.select_bolt_diameter([ns_obj])
-            if diameter is None:
-                diameter = default_diameter
-
-            if diameter is None:
-                self.log.warning(
-                    u"Не найден диаметр болта для '{0}' (ни mboltNN, ни boltNN).".format(
-                        ns_obj.Name))
-                return
-
-            torque = pretension.select_torque(torque_data, diameter)
-            preload_n = pretension.torque_to_pretension(torque, diameter)
-            if preload_n is None:
-                self.log.warning(
-                    u"Момент затяжки для диаметра {0} не найден; болт '{1}' пропущен.".format(
-                        diameter, ns_obj.Name))
-                return
-
-            self._create_bolt_pretension(ns_obj, preload_n, torque, diameter)
-        except Exception as e:
-            self.log.warning(u"Ошибка при создании преднатяга для '{0}': {1}".format(
-                ns_obj.Name, e))
-
-    def _create_bolt_pretension(self, ns_obj, preload_n, torque, diameter):
+    def _create_bolt_pretension(self, ns_obj, preload_n, diameter):
         """Создаёт объект Bolt Pretension с преднатягом ``preload_n`` (Н)."""
         bolt_load_define_by = self._bolt_load_define_by()
         if bolt_load_define_by is None:
@@ -108,18 +135,22 @@ class BoltManager(object):
             self.log.error(u"Класс Quantity не доступен в контексте ProjectContext.")
             return
 
-        bolt_item = self.analysis.AddBoltPretension()
-        bolt_item.Location = ns_obj
-        bolt_item.Name = u"Bolt_{0}".format(ns_obj.Name)
-        bolt_item.Preload.Output.SetDiscreteValue(0, Quantity(preload_n, "N"))
+        try:
+            bolt_item = self.analysis.AddBoltPretension()
+            bolt_item.Location = ns_obj
+            bolt_item.Name = u"Bolt_{0}".format(getattr(ns_obj, "Name", u"?"))
+            bolt_item.Preload.Output.SetDiscreteValue(0, Quantity(preload_n, "N"))
 
-        steps = int(self.analysis.AnalysisSettings.NumberOfSteps)
-        for step in range(LOCK_FROM_STEP, steps + 1):
-            bolt_item.SetDefineBy(step, bolt_load_define_by.Lock)
+            steps = int(self.analysis.AnalysisSettings.NumberOfSteps)
+            for step in range(LOCK_FROM_STEP, steps + 1):
+                bolt_item.SetDefineBy(step, bolt_load_define_by.Lock)
 
-        self.log.debug(
-            u"Настроен болт {0}: момент {1} Нм, диаметр {2} мм -> преднатяг {3:.1f} Н".format(
-                ns_obj.Name, torque, diameter, preload_n))
+            self.log.debug(
+                u"Настроен болт {0}: диаметр {1} мм -> преднатяг {2} Н".format(
+                    getattr(ns_obj, "Name", u"?"), diameter, preload_n))
+        except Exception as exc:
+            self.log.warning(u"Ошибка при создании преднатяга для '{0}': {1}".format(
+                getattr(ns_obj, "Name", u"?"), exc))
 
     def _bolt_load_define_by(self):
         """Перечисление ``BoltLoadDefineBy`` из контекста или из Ansys Enums."""
@@ -142,8 +173,8 @@ class BoltManager(object):
 
         try:
             children = self.model.NamedSelections.Children
-        except Exception as e:
-            self.log.warning(u"Named Selections недоступны: {0}".format(e))
+        except Exception as exc:
+            self.log.warning(u"Named Selections недоступны: {0}".format(exc))
             return []
 
         return list(children or [])

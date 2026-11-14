@@ -89,6 +89,43 @@ def _names(ns_names):
     return names
 
 
+def select_pretension(config, diameter):
+    """Сила затяжки для диаметра из конфига болтов.
+
+    Конфиг ``config/mechanical_configs/bolt_pretension.json`` — единственный
+    источник преднатяга (момент ``torque_nm`` в конфиге конструкции больше не
+    используется). Если диаметра нет в таблице, берётся ``default`` — решение
+    владельца (2026-11-14).
+
+    Args:
+        config (dict): содержимое конфига болтов.
+        diameter (int|str): номинальный диаметр резьбы, мм.
+
+    Returns:
+        tuple: ``(pretension_n, source)``, где ``source`` — ``"table"`` или
+        ``"default"``; ``(None, None)``, если ни таблицы, ни default нет.
+    """
+    if not isinstance(config, dict) or diameter is None:
+        return None, None
+
+    table = config.get("by_diameter_mm") or {}
+    key = str(diameter).strip()
+    for candidate in (key, int(diameter) if key.isdigit() else None):
+        if candidate is None:
+            continue
+        if candidate in table:
+            value = (table[candidate] or {}).get("pretension_n")
+            if value:
+                return value, "table"
+
+    fallback = (config.get("default") or {}).get("pretension_n")
+    if fallback:
+        return fallback, "default"
+
+    return None, None
+
+
+
 def select_bolt_diameter(ns_names, default=None):
     """Диаметр болта из имён Named Selections.
 
