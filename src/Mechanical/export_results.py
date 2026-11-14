@@ -5,11 +5,11 @@
 как ``ansys_automation.py``, но модель не настраивает — только пишет CSV.
 Вызывается:
 
-* журналом ``scripts/workbench_journal.py`` вторым ``SendCommand`` сразу после
-  ``system.Solve(Wait=True)`` — тогда ``Solution.Children`` уже содержат
-  объекты результатов и ``PlotData`` доступны;
+* ACT-расширением ``src/act/ansys_automation/`` сразу после
+  ``Analysis.Solve(True)`` — тогда ``Solution.Children`` уже содержат объекты
+  результатов и ``PlotData`` доступны;
 * вручную из Mechanical (``Automation`` -> ``Script``) после расчёта, когда
-  прогон идёт без batch-журнала.
+  прогон идёт без batch-обвязки.
 
 Путь файла — тот же, что у ``ResultManager.export_results``:
 ``ANSYS_AUTOMATION_RESULTS``, затем ``project_settings.output.results_csv``,

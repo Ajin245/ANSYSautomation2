@@ -71,9 +71,9 @@ def run_automation():
 
         # Шаг 4 конвейера (FR-11, PLAN-MERGE §1.2) здесь НЕ выполняется: до
         # решения ``Solution`` пуст, и CSV получил бы один заголовок. Выгрузку
-        # делает журнал вторым ``SendCommand`` после ``Solve(Wait=True)``
-        # (``src/Mechanical/export_results.py``); при ручном прогоне в GUI
-        # скрипт ``export_results.py`` запускается отдельно после расчёта.
+        # делает ACT-расширение после решения (``src/Mechanical/export_results.py``);
+        # при ручном прогоне в GUI скрипт ``export_results.py`` запускается
+        # отдельно после расчёта.
         context.log.info(
             u"Настройка завершена; CSV выгружается после решения "
             u"(export_results.py).")
