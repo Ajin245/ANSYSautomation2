@@ -43,9 +43,13 @@ def _root():
 
 
 def _ensure_project():
-    """Вернуть открытый проект Workbench, при необходимости открыть файл."""
+    """Вернуть открытый проект Workbench, при необходимости открыть файл.
+
+    Проект обычно уже открыт аргументом ``-F``. Повторно открываем только если
+    проекта нет вовсе: ``project.Name`` в Workbench — отображаемое имя, а не путь,
+    и сравнение с именем файла давало бы ложные переоткрытия.
+    """
     project_path = os.environ.get("ANSYS_PROJECT_PATH", "").strip()
-    project = None
 
     try:
         project = GetProject()
@@ -55,22 +59,14 @@ def _ensure_project():
     if project is None:
         if not project_path:
             raise RuntimeError("no open project and ANSYS_PROJECT_PATH is empty")
+        print("INFO: opening project %s" % project_path)
         Open(FilePath=project_path)
         project = GetProject()
-
-    if not project_path:
-        return project
 
     try:
-        current = str(project.Name)
+        print("INFO: project=%s" % project.Name)
     except Exception:
-        current = ""
-
-    project_name = os.path.basename(project_path)
-    if project_name and project_name.lower() not in current.lower():
-        print("INFO: opening project %s (current: %s)" % (project_path, current))
-        Open(FilePath=project_path)
-        project = GetProject()
+        pass
     return project
 
 
