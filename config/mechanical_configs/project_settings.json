@@ -44,6 +44,9 @@
     },
     "stress_averaging": "ElementalMean"
   },
+  "output": {
+    "results_csv": "results.csv"
+  },
   "units": {
     "force": "N",
     "moment": "N·mm", 

@@ -38,6 +38,7 @@ def run_automation():
     from Mechanical.validation_manager import ValidationManager
     from Mechanical.result_manager import ResultManager
 
+    context = None
     try:
         # Импортируем Quantity из Ansys.Core.Units
         from Ansys.Core.Units import Quantity
@@ -67,11 +68,27 @@ def run_automation():
         result_mgr.setup_plot_results()
 
         ExtAPI.DataModel.Project.SaveProjectBeforeSolution = True
-    
+
+        # Шаг 4 конвейера (FR-11, PLAN-MERGE §1.2): выгрузка CSV. Расчёт к
+        # этому моменту владельцем ещё не запущен, поэтому файл может содержать
+        # только заголовок; после расчёта ``export_results`` можно вызвать
+        # повторно — путь берётся из ``ANSYS_AUTOMATION_RESULTS`` или конфига.
+        results_path = result_mgr.export_results()
+        if results_path:
+            context.log.info(u"Шаг 4 (CSV) завершён, файл: {0}".format(results_path))
+        else:
+            context.log.error(u"Шаг 4 (CSV) не выполнен: файл результатов не записан.")
+
         context.log.info(u"Автоматизация успешно завершена.")
 
     except Exception as e:
-        # Убираем использование traceback, раз он недоступен
-        print(u"Критическая ошибка (без traceback):{0}".format(str(e)))
+        # Верхнеуровневый сбой не глотаем: batch-обвязка этапа 6a должна
+        # отличать успех от провала, поэтому пишем явный маркер и пробрасываем
+        # исключение (в ANSYS это видно как прерванный скрипт с traceback).
+        message = u"AUTOMATION-FAILED: {0}".format(e)
+        if context is not None:
+            context.log.error(message)
+        print(message)
+        raise
 
 run_automation()

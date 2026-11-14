@@ -16,10 +16,50 @@ Equivalent Stress (FR-10), ``export_results`` собирает данные с `
 import os
 
 from Mechanical import postprocessing
+from Mechanical.utils import get_project_root
 
-# Путь v2: results/ рядом с рабочей директорией Mechanical.
+# Каталог и имя файла по умолчанию (PLAN-MERGE §1.2, §4.7: ``results.csv``).
 DEFAULT_EXPORT_DIR = "results"
-DEFAULT_EXPORT_FILE = "results_export.csv"
+DEFAULT_EXPORT_FILE = "results.csv"
+
+# Переменная окружения перекрывает конфиг: удобно для batch-обвязки этапа 6a,
+# когда путь выгрузки задаётся на прогон, а не в репозитории.
+RESULTS_PATH_ENV = "ANSYS_AUTOMATION_RESULTS"
+
+
+def _configured_export_path(context):
+    """Путь из ``config/mechanical_configs/project_settings.json`` или ``None``.
+
+    Относительный путь считается от корня проекта (``utils.get_project_root``),
+    потому что Mechanical запускается с произвольной рабочей директорией.
+    """
+    output = (context.configs.get("project_settings") or {}).get("output") or {}
+    configured = output.get("results_csv")
+    if not configured:
+        return None
+    if os.path.isabs(configured):
+        return configured
+    return os.path.join(get_project_root(), DEFAULT_EXPORT_DIR, configured)
+
+
+def resolve_export_path(context):
+    """Путь CSV-выгрузки: переменная окружения -> конфиг -> значение по умолчанию.
+
+    Args:
+        context (ProjectContext): Контекст с ``configs``.
+
+    Returns:
+        str: абсолютный или заданный явно путь к ``results.csv``.
+    """
+    env_path = os.environ.get(RESULTS_PATH_ENV)
+    if env_path:
+        return env_path
+
+    configured = _configured_export_path(context)
+    if configured:
+        return configured
+
+    return os.path.join(get_project_root(), DEFAULT_EXPORT_DIR, DEFAULT_EXPORT_FILE)
 
 
 def _field(record, names, default=None):
@@ -76,8 +116,10 @@ class ResultManager(object):
         """Собирает результаты и пишет CSV (FR-11).
 
         Args:
-            export_path (str): путь к файлу; по умолчанию
-                ``<cwd>/results/results_export.csv`` (как в v2).
+            export_path (str): путь к файлу; по умолчанию — из переменной
+                окружения ``ANSYS_AUTOMATION_RESULTS``, затем
+                ``project_settings.output.results_csv``, затем
+                ``<корень проекта>/results/results.csv``.
 
         Returns:
             str: путь записанного файла или ``None``, если запись не удалась.
@@ -85,8 +127,7 @@ class ResultManager(object):
         self.log.info(u"Экспорт результатов...")
 
         try:
-            path = export_path or os.path.join(os.getcwd(), DEFAULT_EXPORT_DIR,
-                                               DEFAULT_EXPORT_FILE)
+            path = export_path or resolve_export_path(self.context)
             records = self.collect_result_rows()
             rows = postprocessing.build_csv_rows(
                 records, self._structure_id(), getattr(self.context, "execution_no", None))
