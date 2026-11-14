@@ -30,6 +30,7 @@
 
 ```
 src/Mechanical/        скрипты Mechanical (точка входа — ansys_automation.py)
+src/act/               ACT-расширение — канал доставки скрипта в Mechanical
 src/SpaceClaim/        скрипты SpaceClaim
 config/                JSON-конфиги
 tools/                 статические проверки (python3)
@@ -50,24 +51,32 @@ qa-workspace/          рабочая песочница QA (в .gitignore)
 Последовательность одна и та же во всех режимах: **настройка → решение → выгрузка CSV**.
 Выгрузка до решения смысла не имеет: `Solution` пуст, и файл получил бы один заголовок.
 
-1. Открыть проект Workbench 21R1 с моделью.
-2. В Mechanical: `Automation` → `Script` → открыть `src/Mechanical/ansys_automation.py`.
-3. Запустить скрипт. Точка входа — `run_automation()` в конце файла; она создаёт
-   `ProjectContext`, вызывает `ContactManager`, `MeshManager`, `AnalysisManager`,
-   `ValidationManager`, `ResultManager` и включает `SaveProjectBeforeSolution`. Это **только
-   настройка**: CSV на этом шаге не пишется.
-4. Решение. В batch-режиме (`scripts/run_ansys.bat` → `scripts/workbench_journal.py`) его
-   запускает журнал: `system.Solve(Wait=True)`. При ручном прогоне решение запускает
-   пользователь.
-5. **После** решения выгрузка CSV — `src/Mechanical/export_results.py` (шаг 4 конвейера,
-   `ResultManager.export_results`). В batch её выполняет журнал вторым `SendCommand`; при
-   ручном прогоне скрипт открывается и запускается из Mechanical после расчёта. Путь выгрузки:
-   переменная окружения `ANSYS_AUTOMATION_RESULTS` (полный путь к файлу), иначе
-   `output.results_csv` из `config/mechanical_configs/project_settings.json`, иначе
-   `<корень проекта>/results/results.csv`.
-   Формат — 7 колонок `structure_id,execution,load_step,result_name,body,value,unit`.
-   Журнал проверяет, что в файле есть строки данных: если после решения остался только
-   заголовок, печатается `AUTOMATION-FAILED: solve` и прогон завершается с ненулевым кодом.
+Скрипт живёт в двух местах запуска:
+
+1. **Batch-канал (ACT-расширение)** — `scripts\run_ansys.bat "<project>.wbpj" 8946 [18]`.
+   Скрипт в Mechanical передаёт не журнал, а ACT-расширение `src/act/ansys_automation/`:
+   журнал `scripts/workbench_journal.py` открывает проект, делает `system.Refresh()` +
+   `system.Update()`, Mechanical при загрузке вызывает колбэк расширения `<oninit>`, и расширение
+   выполняет `ansys_automation.py` → `Analysis.Solve(True)` → `export_results.py`. Журнал ждёт
+   `results.csv` и маркер `ACT-RUN-OK` в `logs/act-run.log`.
+   Прежний канал (команда на контейнер `Model`) на сборке 21.1.0.2020110819 молча не работал и
+   удалён — факты в [`docs/run-modes.md`](docs/run-modes.md).
+   Установка расширения (один раз): `scripts\install_act_extension.bat`, затем при необходимости
+   включить его в Mechanical → `Extensions` → `Manage Extensions`. Нужна ACT-лицензия; подробности
+   и список неподтверждённого — [`docs/act-extension.md`](docs/act-extension.md).
+2. **Ручной канал** — Mechanical → `Automation` → `Script` → открыть
+   `src/Mechanical/ansys_automation.py` → Run. Это только настройка: CSV на этом шаге не пишется.
+   После решения запустить `src/Mechanical/export_results.py` (шаг 4 конвейера,
+   `ResultManager.export_results`).
+
+Путь выгрузки: переменная окружения `ANSYS_AUTOMATION_RESULTS` (полный путь к файлу), иначе
+`output.results_csv` из `config/mechanical_configs/project_settings.json`, иначе
+`<корень проекта>/results/results.csv`. Формат — 7 колонок
+`structure_id,execution,load_step,result_name,body,value,unit`.
+
+Журнал считает пустой CSV (только заголовок) провалом: печатает `AUTOMATION-FAILED: solve` и
+завершается с ненулевым кодом. `run_ansys.bat` возвращает 0 только при коде `runwb2` = 0,
+отсутствии `AUTOMATION-FAILED` и наличии `AUTOMATION-OK`.
 
 Для проверки, что модули импортируются в текущем окружении, есть smoke-скрипт
 `src/Mechanical/test_simple.py`: он последовательно создаёт менеджеры и печатает статус каждого
