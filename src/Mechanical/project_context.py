@@ -4,8 +4,14 @@
 Источник смысла — ``v2/src/Mechanical/project_context.py`` (рабочее ядро v2) и
 пункты 5, 8, 9, 12 таблицы слияния (``PLAN-MERGE.md`` §2.2). Что изменено:
 
-* ``project_id`` берётся из имени проекта ``Project_XXX`` через
-  ``execution_parser.parse_project_id`` — поведение v2 сохранено (``re.search``);
+* ``project_id`` берётся, в порядке приоритета, из (1) пути к ``.wbpj`` в
+  ``ANSYS_AUTOMATION_PROJECT`` — путь кладёт журнал Workbench
+  (``GetProjectFile()``), идентификатор извлекается из имени файла
+  (``...\Project_8946.wbpj`` -> ``8946``); (2) имени проекта
+  ``ExtAPI.DataModel.Project.Name`` через ``execution_parser.parse_project_id``
+  — только как последний шанс: в Mechanical это имя часто дефолтное ``Project``
+  и идентификатора не содержит, поэтому такой источник пишется в лог как
+  предупреждение;
 * ``execution_no``/``pipe_diameter`` — из имени модели ``NN-DDD`` через
   ``execution_parser``, с сохранением v2-поведения ``re.search`` для имён с
   префиксом или суффиксом (``Model_18-245_v2``);
@@ -45,6 +51,11 @@ COMMON_CONFIGS = (
     ("analysis_scenarios.json", "analysis_scenarios"),
     ("project_settings.json", "project_settings"),
 )
+
+# Путь к .wbpj, который журнал Workbench передаёт в Mechanical через окружение
+# (``GetProjectFile()``): единственный надёжный источник идентификатора проекта,
+# потому что ``Project.Name`` в Mechanical дефолтный ('Project') и ID не несёт.
+PROJECT_PATH_ENV = "ANSYS_AUTOMATION_PROJECT"
 
 STRUCTURE_CONFIG_KEY = "structure_type"
 MERGED_CONFIG_KEY = "merged"
@@ -119,6 +130,7 @@ class ProjectContext(object):
         self.model = None
         self.analysis = None
         self.project_id = None
+        self.project_id_source = None
         self.structure_type_id = None
         self.structure_category = None
         self.execution_no = None
@@ -214,6 +226,63 @@ class ProjectContext(object):
         """Идентификатор проекта ``Project_XXX`` -> ``XXX`` (``None``, если нет)."""
         return execution_parser.parse_project_id(self._get_project_name())
 
+    def _project_id_from_path(self, path):
+        """Идентификатор из пути к ``.wbpj``: ``...\\Project_8946.wbpj`` -> ``8946``.
+
+        Имя файла разбирается тем же ``parse_project_id``, что и имя проекта,
+        поэтому ``Project_8946.wbpj`` и ``Project_8946`` дают один результат.
+
+        Args:
+            path (str): путь к файлу проекта из ``ANSYS_AUTOMATION_PROJECT``.
+
+        Returns:
+            str: идентификатор или ``None``, если путь пуст/имя не по шаблону.
+        """
+        if not path:
+            return None
+        base = os.path.basename(path.strip())
+        name = os.path.splitext(base)[0]
+        return execution_parser.parse_project_id(name)
+
+    def _resolve_project_id(self, project_name):
+        """Идентификатор проекта и источник, из которого он получен.
+
+        Приоритет источников:
+            1. ``ANSYS_AUTOMATION_PROJECT`` — путь к ``.wbpj`` из журнала
+               Workbench (``GetProjectFile()``). Основной путь: в Mechanical
+               ``Project.Name`` дефолтный и ID не содержит.
+            2. ``DataModel.Project.Name`` (``Project_XXX``) — последний шанс,
+               с предупреждением в лог: имя может быть ``'Project'``.
+
+        Args:
+            project_name (str): ``ExtAPI.DataModel.Project.Name``.
+
+        Returns:
+            tuple: ``(project_id, source)``; ``source`` — ``"env"``,
+            ``"project_name"`` или ``None`` (идентификатор не найден).
+        """
+        project_path = os.environ.get(PROJECT_PATH_ENV, "")
+        project_id = self._project_id_from_path(project_path)
+        if project_id:
+            self.log.info(u"Путь к проекту ({0}): {1}".format(PROJECT_PATH_ENV, project_path))
+            return project_id, "env"
+
+        if project_path and project_path.strip():
+            self.log.warning(
+                u"В пути к проекту '{0}' нет шаблона Project_XXX; "
+                u"пробуем имя проекта из Mechanical.".format(project_path))
+
+        project_id = execution_parser.parse_project_id(project_name)
+        if project_id:
+            self.log.warning(
+                u"Идентификатор {0} взят из имени проекта '{1}' ({2} не задан). "
+                u"В Mechanical имя проекта часто дефолтное 'Project', поэтому "
+                u"журнал Workbench должен передавать путь к .wbpj.".format(
+                    project_id, project_name, PROJECT_PATH_ENV))
+            return project_id, "project_name"
+
+        return None, None
+
     def _convert_to_py(self, obj):
         """Конвертация .NET-объектов ``JavaScriptSerializer`` в python-структуры."""
         if hasattr(obj, 'Keys') and hasattr(obj, 'Item'):
@@ -276,7 +345,7 @@ class ProjectContext(object):
         self.ns_names = self._get_ns_names()
         self.ns_analysis = structure_detector.detect_ns_patterns(self.ns_names)
 
-        self.project_id = execution_parser.parse_project_id(project_name)
+        self.project_id, self.project_id_source = self._resolve_project_id(project_name)
         structure_type, category = structure_detector.detect_structure_type(
             model_name, self.ns_names)
         self.structure_category = category
@@ -293,20 +362,24 @@ class ProjectContext(object):
                     self.execution_no, self.pipe_diameter))
 
         if self.project_id:
-            self.log.info(u"Идентификатор проекта: {0}".format(self.project_id))
+            self.log.info(u"Идентификатор проекта: {0} (источник: {1})".format(
+                self.project_id, self.project_id_source))
         else:
             self.log.warning(
-                u"Шаблон Project_XXX в имени проекта '{0}' не найден; "
-                u"используется fallback v1 (тип конструкции '{1}', категория '{2}').".format(
-                    project_name, structure_type, category))
+                u"Идентификатор проекта не найден ни в {0}, ни в имени проекта "
+                u"'{1}'; используется fallback v1 (тип конструкции '{2}', "
+                u"категория '{3}').".format(
+                    PROJECT_PATH_ENV, project_name, structure_type, category))
 
         if self.execution_no:
             self.log.info(u"Номер исполнения: {0}".format(self.execution_no))
             self.log.info(u"Диаметр трубопровода: {0} мм".format(self.pipe_diameter))
         else:
             # Поведение v2: без исполнения работа продолжается, но без нагрузок.
-            self.log.warning(u"Не удалось извлечь исполнение и диаметр из имени модели: '{0}'".format(
-                model_name))
+            self.log.warning(
+                u"Не удалось извлечь исполнение и диаметр из имени модели: '{0}'. "
+                u"Ожидается имя по шаблону NN-DDD (например 18-245); дефолтное "
+                u"имя 'Model' означает, что модель не переименована.".format(model_name))
 
         if not self.structure_type_id:
             raise ValueError(self._identity_error(project_name, model_name))
@@ -350,6 +423,16 @@ class ProjectContext(object):
             ValueError: файл ``structure_type_XXX.json`` отсутствует или не
                 читается; текст содержит путь и определённый идентификатор.
         """
+        if self.structure_type_id is None:
+            # Отдельный текст: причина — нераспознанный тип конструкции, а не
+            # отсутствующий файл. Иначе ошибка выглядела бы как «нет
+            # structure_type_None.json» и уводила от настоящей причины.
+            raise ValueError(
+                u"Тип конструкции не распознан: идентификатор не найден ни в "
+                u"ANSYS_AUTOMATION_PROJECT, ни в имени проекта, ни по шаблонам "
+                u"имени модели и Named Selections (категория '{0}'). "
+                u"Файл конфига конструкции не выбирается.".format(self.structure_category))
+
         path = os.path.join(self.project_root, "config",
                             "structure_type_{0}.json".format(self.structure_type_id))
         if not os.path.exists(path):

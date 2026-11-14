@@ -267,13 +267,28 @@ class ProjectContextTestCase(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="ctx-tests-")
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self._old_root = os.environ.get("ANSYS_AUTOMATION_ROOT")
+        self._old_project = os.environ.get("ANSYS_AUTOMATION_PROJECT")
         self.addCleanup(self._restore_root)
+        self.addCleanup(self._restore_project_env)
 
     def _restore_root(self):
         if self._old_root is None:
             os.environ.pop("ANSYS_AUTOMATION_ROOT", None)
         else:
             os.environ["ANSYS_AUTOMATION_ROOT"] = self._old_root
+
+    def _restore_project_env(self):
+        if self._old_project is None:
+            os.environ.pop("ANSYS_AUTOMATION_PROJECT", None)
+        else:
+            os.environ["ANSYS_AUTOMATION_PROJECT"] = self._old_project
+
+    def _use_project_path(self, path):
+        if path is None:
+            os.environ.pop("ANSYS_AUTOMATION_PROJECT", None)
+        else:
+            os.environ["ANSYS_AUTOMATION_PROJECT"] = path
+        return path
 
     def _make_root(self, structure_id="8946", skip_common=None, structure_data=None):
         """Собирает временный корень проекта: config/mechanical_configs + конфиг."""
@@ -319,6 +334,79 @@ class ProjectContextTestCase(unittest.TestCase):
         self.assertEqual(context.structure_category, "execution")
         self.assertIsNotNone(context.model)
         self.assertIsNotNone(context.analysis)
+
+    # --- источники идентификатора проекта (порядок приоритета) --------------
+    def test_project_id_comes_from_env_path_to_wbpj(self):
+        # Приоритет 1: путь к .wbpj из журнала Workbench. Имя проекта в
+        # Mechanical дефолтное ('Project') и идентификатора не содержит.
+        self._use_root(self._make_root())
+        self._use_project_path(u"C:\\Projects\\Model\\Project_8946.wbpj")
+
+        context = self._context(project_name="Project", model_name="Model")
+
+        self.assertEqual(context.project_id, "8946")
+        self.assertEqual(context.project_id_source, "env")
+        self.assertEqual(context.structure_type_id, "8946")
+        # Дефолтное имя модели не ломает прогон: предупреждение, а не падение.
+        self.assertIsNone(context.execution_no)
+        self.assertEqual(set(context.configs.keys()),
+                         {"mesh_config", "contact_settings", "analysis_scenarios",
+                          "project_settings", "structure_type", "merged"})
+
+    def test_project_name_is_last_resort_with_warning(self):
+        # Приоритет 2: Project.Name годится, только если в нём есть Project_XXX.
+        self._use_root(self._make_root())
+        self._use_project_path(None)
+        ext_api = FakeExtAPI("Project_8946", "18-245")
+
+        context = ProjectContext(ext_api)
+
+        self.assertEqual(context.project_id, "8946")
+        self.assertEqual(context.project_id_source, "project_name")
+        self.assertIn(u"ANSYS_AUTOMATION_PROJECT", ext_api.Log.text())
+        self.assertIn(u"дефолтное", ext_api.Log.text())
+
+    def test_env_path_without_project_id_falls_back_to_project_name(self):
+        self._use_root(self._make_root())
+        self._use_project_path(u"C:\\Projects\\something-else.wbpj")
+
+        context = self._context(project_name="Project_8946", model_name="18-245")
+
+        self.assertEqual(context.project_id, "8946")
+        self.assertEqual(context.project_id_source, "project_name")
+
+    def test_default_names_without_env_raise_identity_error(self):
+        # Ни env, ни имени проекта, ни шаблона модели: явная ошибка, а не
+        # поиск structure_type_Model.json.
+        self._use_root(self._make_root())
+        self._use_project_path(None)
+        error = None
+        try:
+            self._context(project_name="Project", model_name="Model")
+        except ValueError as exc:
+            error = exc
+
+        self.assertIsNotNone(error)
+        self.assertIn(u"Не удалось определить конструкцию", u"{0}".format(error))
+
+    def test_structure_config_without_type_reports_unknown_type(self):
+        # Отдельная ветка _load_structure_config: причина — нераспознанный тип,
+        # а не отсутствие файла structure_type_None.json.
+        self._use_root(self._make_root())
+        self._use_project_path(None)
+        context = self._context()
+        context.structure_type_id = None
+        context.structure_category = "unknown"
+        error = None
+        try:
+            context._load_structure_config()
+        except ValueError as exc:
+            error = exc
+
+        self.assertIsNotNone(error)
+        message = u"{0}".format(error)
+        self.assertIn(u"Тип конструкции не распознан", message)
+        self.assertNotIn(u"structure_type_None.json", message)
 
     def test_project_root_comes_from_environment(self):
         root = self._use_root(self._make_root())

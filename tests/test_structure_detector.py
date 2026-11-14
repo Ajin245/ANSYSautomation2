@@ -48,8 +48,15 @@ class StructureDetectorTestCase(unittest.TestCase):
         # 18-245 — исполнение и диаметр, идентификатора конструкции в имени нет.
         self.assertEqual(sd.detect_structure_type('18-245'), (None, 'execution'))
 
-    def test_unknown_fallback(self):
-        self.assertEqual(sd.detect_structure_type('weird-name'), ('weird', 'unknown'))
+    def test_unknown_fallback_has_no_structure_id(self):
+        # Имя не по шаблону не даёт идентификатора: возвращать само имя как тип
+        # нельзя — иначе искался бы structure_type_weird.json.
+        self.assertEqual(sd.detect_structure_type('weird-name'), (None, 'unknown'))
+
+    def test_default_model_name_is_not_a_structure_type(self):
+        # Дефолтное имя модели в Mechanical: типа конструкции в нём нет.
+        # Раньше возвращалось ('Model', 'unknown') — маскировка бага.
+        self.assertEqual(sd.detect_structure_type('Model', []), (None, 'unknown'))
 
     def test_empty_input(self):
         self.assertEqual(sd.detect_structure_type(''), (None, 'unknown'))

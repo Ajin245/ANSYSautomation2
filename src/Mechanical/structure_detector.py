@@ -53,7 +53,10 @@ def detect_structure_type(model_name, ns_names=None):
     Схемы по порядку: ``Project_XXX`` (v2) -> ``151-02-F2`` (v1 standard) ->
     ``custom_001-01-F1`` -> ``151_something`` -> ``ABC_001`` -> ``18-245``
     (v2 «исполнение-диаметр», типа конструкции нет). Если ни одна схема не
-    подошла, тип — первая часть имени до дефиса с категорией ``unknown``.
+    подошла (например, дефолтное имя модели ``Model``), идентификатора
+    конструкции нет: возвращается ``(None, "unknown")``, а не само имя модели —
+    иначе дальше искался бы несуществующий ``structure_type_Model.json`` и
+    настоящая причина (нераспознанный тип) терялась бы.
 
     Args:
         model_name (str): имя модели (``Model.Name`` в ANSYS).
@@ -62,7 +65,7 @@ def detect_structure_type(model_name, ns_names=None):
 
     Returns:
         tuple: ``(structure_type, category)``. ``structure_type`` — строка или
-        ``None`` (для схемы ``NN-DDD`` и пустого имени).
+        ``None`` (для схемы ``NN-DDD``, пустого имени и нераспознанного имени).
     """
     if not model_name:
         return None, "unknown"
@@ -76,9 +79,9 @@ def detect_structure_type(model_name, ns_names=None):
             return None, "execution"
         return match.group(1), category
 
-    parts = model_name.split('-')
-    if parts and parts[0]:
-        return parts[0], "unknown"
+    # Имя не по шаблону (в Mechanical это часто дефолтное ``Model``): типа
+    # конструкции в нём нет. Возвращать само имя как тип нельзя — вызывающий
+    # код принял бы его за идентификатор и искал structure_type_<имя>.json.
     return None, "unknown"
 
 
