@@ -30,8 +30,9 @@ import re
 import subprocess
 import sys
 
-# Каталоги, в которых лежит код, обязанный работать в IronPython 2.7.
-SCAN_DIRS = ("src", "tools")
+# Каталоги, в которых лежит код, обязанный работать в IronPython 2.7
+# (scripts/ — журнал Workbench, он исполняется тем же IronPython).
+SCAN_DIRS = ("src", "tools", "scripts")
 SKIP_DIRS = ("__pycache__", ".git")
 
 HERE = os.path.dirname(os.path.abspath(__file__))

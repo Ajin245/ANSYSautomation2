@@ -14,7 +14,7 @@ Py2-конструкции намеренно НЕ считаются наруш
 допустимы в целевой среде (IronPython 2.7 в ANSYS Workbench 21R1).
 
 Разбор лексический (``tokenize``), поэтому слова внутри строк и комментариев не ловятся.
-Проверяется только ``src/`` — это код, который исполняется в ANSYS. ``tools/`` и ``tests/``
+Проверяются ``src/`` и ``scripts/`` — код, который исполняется в ANSYS. ``tools/`` и ``tests/``
 работают под python3 и проверяются синтаксическим гейтом ``check_py2.py``.
 
 Запуск: ``python3 tools/py2lint.py``. Код возврата 0 — ``PY2-LINT-OK``.
@@ -28,7 +28,7 @@ import re
 import sys
 import tokenize
 
-SCAN_DIR = "src"
+SCAN_DIRS = ("src", "scripts")
 SKIP_DIRS = ("__pycache__", ".git")
 FORBIDDEN_MODULES = ("pathlib", "subprocess", "numpy", "pandas", "pip")
 
@@ -44,11 +44,16 @@ def err(msg):
 
 def iter_py_files():
     files = []
-    for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, SCAN_DIR)):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
-        for name in sorted(filenames):
-            if name.endswith(".py"):
-                files.append(os.path.join(dirpath, name))
+    for rel in SCAN_DIRS:
+        base = os.path.join(ROOT, rel)
+        if not os.path.isdir(base):
+            err("WARN: нет каталога %s — пропускаю" % base)
+            continue
+        for dirpath, dirnames, filenames in os.walk(base):
+            dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+            for name in sorted(filenames):
+                if name.endswith(".py"):
+                    files.append(os.path.join(dirpath, name))
     return files
 
 
@@ -163,7 +168,7 @@ def _next_name(tokens, index):
 def main():
     paths = iter_py_files()
     if not paths:
-        err("PY2-LINT-FAIL: в %s/ нет .py файлов" % SCAN_DIR)
+        err("PY2-LINT-FAIL: нет .py файлов в %s" % (SCAN_DIRS,))
         return 1
 
     total = 0

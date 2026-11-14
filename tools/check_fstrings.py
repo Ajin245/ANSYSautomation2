@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Ноль f-строк в продуктовом коде src/ (PLAN-MERGE §6.1, RULES.md).
+"""Ноль f-строк в продуктовом коде src/ и scripts/ (PLAN-MERGE §6.1, RULES.md).
 
 f-строки — синтаксис Python 3.6+, в IronPython 2.7 (ANSYS Workbench 21R1) они не работают,
-поэтому их количество в ``src/`` обязано быть нулевым.
+поэтому их количество в ``src/`` и ``scripts/`` обязано быть нулевым.
 
 Запуск: ``python3 tools/check_fstrings.py``.
 Вывод: ``FSTRINGS-OK 0`` при нуле; иначе строки ``FSTRING <путь>:<строка>`` и код возврата 1.
@@ -18,7 +18,7 @@ import re
 import sys
 import tokenize
 
-SCAN_DIR = "src"
+SCAN_DIRS = ("src", "scripts")
 SKIP_DIRS = ("__pycache__", ".git")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -33,11 +33,16 @@ def err(msg):
 
 def iter_py_files():
     files = []
-    for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, SCAN_DIR)):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
-        for name in sorted(filenames):
-            if name.endswith(".py"):
-                files.append(os.path.join(dirpath, name))
+    for rel in SCAN_DIRS:
+        base = os.path.join(ROOT, rel)
+        if not os.path.isdir(base):
+            err("WARN: нет каталога %s — пропускаю" % base)
+            continue
+        for dirpath, dirnames, filenames in os.walk(base):
+            dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
+            for name in sorted(filenames):
+                if name.endswith(".py"):
+                    files.append(os.path.join(dirpath, name))
     return files
 
 
@@ -63,7 +68,7 @@ def find_fstrings(path):
 def main():
     paths = iter_py_files()
     if not paths:
-        err("FSTRINGS-FAIL: в %s/ нет .py файлов" % SCAN_DIR)
+        err("FSTRINGS-FAIL: нет .py файлов в %s" % (SCAN_DIRS,))
         return 1
 
     total = 0
