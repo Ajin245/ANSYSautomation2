@@ -5,9 +5,11 @@
 как ``ansys_automation.py``, но модель не настраивает — только пишет CSV.
 Вызывается:
 
-* журналом ``scripts/workbench_journal.py`` вторым ``SendCommand`` сразу после
-  ``system.Solve(Wait=True)`` — тогда ``Solution.Children`` уже содержат
-  объекты результатов и ``PlotData`` доступны;
+* скриптом ``src/Mechanical/solve_and_export.py`` сразу после
+  ``Analysis.Solve(True)`` — его запускает журнал
+  (``scripts/workbench_journal.py``) вторым ``SendCommand``. К этому моменту
+  ``Solution.Children`` уже содержат объекты результатов и ``PlotData``
+  доступны;
 * вручную из Mechanical (``Automation`` -> ``Script``) после расчёта, когда
   прогон идёт без batch-журнала.
 

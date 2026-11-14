@@ -70,8 +70,9 @@ def run_automation():
         ExtAPI.DataModel.Project.SaveProjectBeforeSolution = True
 
         # Шаг 4 конвейера (FR-11, PLAN-MERGE §1.2) здесь НЕ выполняется: до
-        # решения ``Solution`` пуст, и CSV получил бы один заголовок. Выгрузку
-        # делает журнал вторым ``SendCommand`` после ``Solve(Wait=True)``
+        # решения ``Solution`` пуст, и CSV получил бы один заголовок. В batch
+        # журнал вторым ``SendCommand`` запускает ``solve_and_export.py``:
+        # он решает модель и выполняет ``export_results.py``
         # (``src/Mechanical/export_results.py``); при ручном прогоне в GUI
         # скрипт ``export_results.py`` запускается отдельно после расчёта.
         context.log.info(
