@@ -5,46 +5,35 @@
 
     runwb2 -B -F "<project>.wbpj" -R "scripts\\workbench_journal.py"
 
-Что делает журнал:
+Проект открывает сам Workbench аргументом ``-F``. Если переменная окружения
+``ANSYS_PROJECT_PATH`` задана и открытый проект ей не соответствует, журнал
+пробует открыть файл явно. Mechanical-система выбирается по ``MECH_SYSTEM_NAME``,
+иначе берётся первая система, у которой есть контейнер ``Model``.
 
-1. берёт систему Mechanical (``MECH_SYSTEM_NAME`` или первую с контейнером
-   ``Model``) из **уже открытого** проекта — проект открывает сам Workbench
-   аргументом ``-F``;
-2. вызывает ``system.Refresh()`` и ``system.Update()``. Update поднимает
-   Mechanical, а тот при загрузке поднимает установленное ACT-расширение
-   ``ansys_automation`` (``src/act/ansys_automation/``), которое выполняет
-   конвейер: настройка -> решение -> выгрузка ``results.csv``;
-3. ждёт ``results.csv`` и маркер ``ACT-RUN-OK`` в ``logs/act-run.log``;
-4. сохраняет проект.
+Внутри Mechanical выполняется ``execfile`` нашего скрипта
+``src/Mechanical/ansys_automation.py`` через ``SendCommand`` — это только
+настройка модели. Затем журнал дожидается решения ``Solve(Wait=True)``, и
+**после** решения вторым ``SendCommand`` выгружает CSV
+(``src/Mechanical/export_results.py``, шаг 4 конвейера). Если выгрузка не
+записала ни одной строки данных, журнал считает решение несостоявшимся,
+печатает ``AUTOMATION-FAILED: solve`` и завершается с кодом 1: пустой
+``results.csv`` не должен выглядеть успехом. Последним шагом проект
+сохраняется.
 
-Команда в Mechanical **не передаётся**: канал «python-команда на контейнере
-Model» на сборке 21.1.0.2020110819 молча ничего не делает — вызов возвращает
-None и не производит эффекта (четыре живых прогона 2026-11-14, факты —
-в ``docs/run-modes.md``). Мёртвый путь удалён, доставка идёт через
-ACT-расширение.
+Каждая ветка обёрнута в try/except: при ошибке печатается маркер
+``AUTOMATION-FAILED`` (его ищет bat-обёртка) и процесс завершается с кодом 1.
 
-Имена Workbench API взяты из живой диагностики на целевой сборке:
-``GetAllSystems``, ``GetSystem``, ``GetContainer``, ``Refresh``, ``Update``,
-``Save`` есть; ``GetProject`` — нет.
-
-Каждая ветка провала печатает ``AUTOMATION-FAILED: <шаг>: <причина>`` (его
-ищет bat-обёртка) и завершается с кодом 1.
+ВАЖНО: точные имена объектов Workbench API (``GetProject``, ``GetSystem``,
+``GetContainer``, ``Solve``, ``project.Save``) взяты из документации/журналов
+21R1, но на живом Workbench этот файл ещё не прогонялся.
 """
 
 import os
 import sys
-import time
+
 
 MARKER = "AUTOMATION-FAILED"
 OK_MARKER = "AUTOMATION-OK"
-
-ACT_LOG = os.path.join("logs", "act-run.log")
-ACT_START = "ACT-RUN-START"
-ACT_OK = "ACT-RUN-OK"
-
-# Сколько секунд ждать results.csv/маркер после Update(). Update() сам
-# синхронный, поэтому запас нужен только на случай асинхронного хвоста.
-DEFAULT_WAIT_SECONDS = 300
 
 
 def _root():
@@ -59,27 +48,64 @@ def _root():
         return os.getcwd()
 
 
-def _systems():
-    """Все системы открытого проекта (``GetAllSystems``)."""
-    systems = GetAllSystems()
-    if systems is None:
-        return []
-    result = []
-    for system in systems:
-        result.append(system)
-    return result
+def _ensure_project():
+    """Вернуть открытый проект Workbench, при необходимости открыть файл.
+
+    Проект обычно уже открыт аргументом ``-F``. Повторно открываем только если
+    проекта нет вовсе: ``project.Name`` в Workbench — отображаемое имя, а не путь,
+    и сравнение с именем файла давало бы ложные переоткрытия.
+    """
+    project_path = os.environ.get("ANSYS_PROJECT_PATH", "").strip()
+
+    try:
+        project = GetProject()
+    except Exception:
+        project = None
+
+    if project is None:
+        if not project_path:
+            raise RuntimeError("no open project and ANSYS_PROJECT_PATH is empty")
+        print("INFO: opening project %s" % project_path)
+        Open(FilePath=project_path)
+        project = GetProject()
+
+    try:
+        print("INFO: project=%s" % project.Name)
+    except Exception:
+        pass
+    return project
 
 
-def _find_mechanical_system(systems):
+def _project_systems(project):
+    """Список систем проекта: сначала project.Systems, затем project.Children."""
+    for attribute in ("Systems", "Children"):
+        try:
+            value = getattr(project, attribute)
+        except Exception:
+            continue
+        if value is None:
+            continue
+        items = []
+        try:
+            for item in value:
+                items.append(item)
+        except Exception:
+            continue
+        if items:
+            return items
+    return []
+
+
+def _find_mechanical_system(project):
     """Mechanical-система по MECH_SYSTEM_NAME, иначе первая с контейнером Model."""
-    name = os.environ.get("MECH_SYSTEM_NAME", "")
-    if name and name.strip():
-        system = GetSystem(Name=name.strip())
+    name = os.environ.get("MECH_SYSTEM_NAME", "").strip()
+    if name:
+        system = GetSystem(Name=name)
         if system is None:
             raise RuntimeError("Workbench system '%s' not found" % name)
         return system
 
-    for system in systems:
+    for system in _project_systems(project):
         try:
             model = system.GetContainer(ComponentName="Model")
         except Exception:
@@ -90,15 +116,42 @@ def _find_mechanical_system(systems):
     raise RuntimeError("no system with a Mechanical 'Model' container found")
 
 
+def _mechanical_model(system):
+    """Контейнер Model, через который Mechanical принимает команды."""
+    model = system.GetContainer(ComponentName="Model")
+    if model is None:
+        raise RuntimeError("system has no 'Model' container")
+    return model
+
+
+def _automation_command(script_path):
+    """Текст для SendCommand: задать __file__ и выполнить наш скрипт.
+
+    ``execfile`` сам не выставляет ``__file__``, а ``ansys_automation.py``
+    использует его на уровне модуля, поэтому присваиваем явно.
+    """
+    return '__file__ = r"%s"\nexecfile(r"%s")' % (script_path, script_path)
+
+
+def _export_command(script_path):
+    """Текст для второго SendCommand: выгрузка CSV после решения.
+
+    ``export_results.py`` строит ``ProjectContext`` и ``ResultManager`` так же,
+    как основной скрипт, но модель не настраивает — только пишет CSV.
+    """
+    return '__file__ = r"%s"\nexecfile(r"%s")' % (script_path, script_path)
+
+
 def _results_path(root):
     """Путь CSV-выгрузки: ``ANSYS_AUTOMATION_RESULTS`` или ``results/results.csv``.
 
-    Совпадает с ``ResultManager.resolve_export_path`` для штатного конфига
-    (``project_settings.output.results_csv = "results.csv"``).
+    Совпадает с ``ResultManager.resolve_export_path`` по умолчанию
+    (``DEFAULT_EXPORT_DIR``/``DEFAULT_EXPORT_FILE``), чтобы журнал проверял
+    именно тот файл, который пишет Mechanical.
     """
-    env_path = os.environ.get("ANSYS_AUTOMATION_RESULTS", "")
-    if env_path and env_path.strip():
-        return env_path.strip()
+    env_path = os.environ.get("ANSYS_AUTOMATION_RESULTS", "").strip()
+    if env_path:
+        return env_path
     return os.path.join(root, "results", "results.csv")
 
 
@@ -114,165 +167,108 @@ def _count_data_rows(path):
                 count += 1
     finally:
         handle.close()
-    if count < 0:
-        return 0
-    return count
+    return max(count, 0)
 
 
-def _act_state(log_path, since):
-    """Состояние последнего запуска расширения по ``logs/act-run.log``.
-
-    Args:
-        log_path (str): путь к логу расширения.
-        since (float): время начала текущего прогона (``time.time()``).
-            Лог, не обновлявшийся после этой отметки, считается отсутствующим:
-            иначе маркер прошлого успешного прогона дал бы ложный успех.
-
-    Returns:
-        tuple: (state, detail), где state — ``"none"`` (лога нет),
-        ``"running"`` (старт есть, результата нет), ``"ok"``, ``"failed"``.
-    """
-    if not os.path.exists(log_path):
-        return "none", ""
-    if os.path.getmtime(log_path) < since - 1:
-        return "none", ""
-
-    handle = open(log_path, "r")
+def _save_project(project):
+    """Сохранить проект: сначала project.Save(), затем глобальный Save()."""
     try:
-        text = handle.read()
-    finally:
-        handle.close()
-
-    start = text.rfind(ACT_START)
-    if start < 0:
-        return "none", ""
-    tail = text[start:]
-    if ACT_OK in tail:
-        return "ok", tail
-    if "AUTOMATION-FAILED" in tail:
-        return "failed", tail
-    return "running", tail
-
-
-def _wait_for_results(root, wait_seconds, started):
-    """Дождаться результата ACT-прогона.
-
-    Args:
-        root (str): корень репозитория.
-        wait_seconds (int): сколько ждать после Update().
-        started (float): время начала прогона; старые results.csv/лог не
-            считаются доказательством успеха.
-
-    Returns:
-        int: число строк данных в results.csv (0 — успеха не было).
-
-    Raises:
-        RuntimeError: если расширение не отработало или упало — текст причины.
-    """
-    results_path = _results_path(root)
-    log_path = os.path.join(root, ACT_LOG)
-    deadline = started + wait_seconds
-
-    while True:
-        state, tail = _act_state(log_path, started)
-        if state == "failed":
-            raise RuntimeError("ACT extension failed (see %s): %s"
-                               % (log_path, _last_failure_line(tail)))
-        rows = _count_data_rows(results_path)
-        if state == "ok" and rows > 0:
-            if os.path.getmtime(results_path) >= started - 1:
-                return rows
-        if time.time() >= deadline:
-            if state == "none":
-                raise RuntimeError(
-                    "ACT extension did not run: %s absent. Install it per "
-                    "docs/act-extension.md (scripts\\install_act_extension.bat) "
-                    "and check that Mechanical loads it in batch mode."
-                    % log_path)
-            if state == "running":
-                raise RuntimeError("ACT extension did not finish within %d s "
-                                   "(see %s)" % (wait_seconds, log_path))
-            raise RuntimeError("no data rows in %s (act state: %s)"
-                               % (results_path, state))
-        time.sleep(1)
-
-
-def _last_failure_line(tail):
-    """Последняя строка с маркером провала — короткая причина для консоли."""
-    lines = [line for line in tail.splitlines() if "AUTOMATION-FAILED" in line]
-    if not lines:
-        return ""
-    return lines[-1].strip()
-
-
-def _save_project():
-    """Сохранить проект (``Save`` подтверждён живой диагностикой 21R1)."""
+        project.Save()
+        return
+    except Exception:
+        pass
     Save(Overwrite=True)
 
 
 def main():
     root = _root()
+    script_path = os.environ.get(
+        "ANSYS_AUTOMATION_SCRIPT",
+        os.path.join(root, "src", "Mechanical", "ansys_automation.py"),
+    )
+    structure_id = os.environ.get("STRUCTURE_ID", "")
+    execution = os.environ.get("EXECUTION", "")
+
     print("INFO: root=%s" % root)
-    print("INFO: structure_id=%s execution=%s"
-          % (os.environ.get("STRUCTURE_ID", ""), os.environ.get("EXECUTION", "")))
+    print("INFO: automation script=%s" % script_path)
+    print("INFO: structure_id=%s execution=%s" % (structure_id, execution))
+
+    if not os.path.exists(script_path):
+        print("AUTOMATION-FAILED: automation script not found: %s" % script_path)
+        sys.exit(1)
 
     try:
-        systems = _systems()
-        print("INFO: systems=%d" % len(systems))
+        project = _ensure_project()
     except Exception as exc:
-        print("%s: list systems: %s" % (MARKER, exc))
-        sys.exit(1)
-
-    if not systems:
-        print("%s: no systems in opened project (pass -F <project.wbpj>)" % MARKER)
+        print("AUTOMATION-FAILED: open project: %s" % exc)
         sys.exit(1)
 
     try:
-        system = _find_mechanical_system(systems)
+        system = _find_mechanical_system(project)
         print("INFO: system=%s" % system.Name)
     except Exception as exc:
-        print("%s: find Mechanical system: %s" % (MARKER, exc))
+        print("AUTOMATION-FAILED: find Mechanical system: %s" % exc)
         sys.exit(1)
 
-    # Отметка старта: лог расширения обновляется во время Update(), поэтому
-    # «свежесть» лога и CSV проверяем относительно этого момента.
-    started = time.time()
-
     try:
-        system.Refresh()
-        print("INFO: refreshed")
+        model = _mechanical_model(system)
+        model.SendCommand(
+            Language="Python",
+            Command=_automation_command(script_path),
+        )
+        print("INFO: Mechanical command sent")
     except Exception as exc:
-        print("%s: refresh: %s" % (MARKER, exc))
+        print("AUTOMATION-FAILED: SendCommand: %s" % exc)
         sys.exit(1)
 
-    # Update поднимает Mechanical; ACT-расширение выполняет конвейер.
     try:
-        system.Update()
-        print("INFO: update finished")
+        system.Solve(Wait=True)
+        print("INFO: solve finished")
     except Exception as exc:
-        print("%s: update: %s" % (MARKER, exc))
+        print("AUTOMATION-FAILED: solve: %s" % exc)
+        sys.exit(1)
+
+    # Шаг 4 конвейера (FR-11, PLAN-MERGE §1.2): выгрузка CSV ПОСЛЕ решения.
+    export_script = os.environ.get(
+        "ANSYS_EXPORT_SCRIPT",
+        os.path.join(root, "src", "Mechanical", "export_results.py"),
+    )
+    print("INFO: export script=%s" % export_script)
+    if not os.path.exists(export_script):
+        print("AUTOMATION-FAILED: export script not found: %s" % export_script)
         sys.exit(1)
 
     try:
-        wait_seconds = int(os.environ.get("ANSYS_ACT_WAIT_SECONDS", ""))
-    except Exception:
-        wait_seconds = DEFAULT_WAIT_SECONDS
-    if wait_seconds <= 0:
-        wait_seconds = DEFAULT_WAIT_SECONDS
-
-    try:
-        rows = _wait_for_results(root, wait_seconds, started)
+        model.SendCommand(
+            Language="Python",
+            Command=_export_command(export_script),
+        )
+        print("INFO: export command sent")
     except Exception as exc:
-        print("%s: solve: %s" % (MARKER, exc))
+        print("AUTOMATION-FAILED: export: %s" % exc)
         sys.exit(1)
 
-    print("INFO: results.csv rows=%d path=%s" % (rows, _results_path(root)))
+    results_path = _results_path(root)
+    try:
+        data_rows = _count_data_rows(results_path)
+    except Exception as exc:
+        print("AUTOMATION-FAILED: solve: results.csv unreadable: %s (%s)"
+              % (results_path, exc))
+        sys.exit(1)
+
+    if data_rows <= 0:
+        # Пустой файл (только заголовок) = данных после решения нет: решение
+        # не сошлось либо результат не собран. Это провал, а не успех.
+        print("AUTOMATION-FAILED: solve: no data rows in %s" % results_path)
+        sys.exit(1)
+
+    print("INFO: results.csv rows=%d path=%s" % (data_rows, results_path))
 
     try:
-        _save_project()
+        _save_project(project)
         print("INFO: project saved")
     except Exception as exc:
-        print("%s: save project: %s" % (MARKER, exc))
+        print("AUTOMATION-FAILED: save project: %s" % exc)
         sys.exit(1)
 
     print(OK_MARKER)
