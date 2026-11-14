@@ -24,6 +24,7 @@ rem                          Framework\bin\win64\runwb2.exe)
 rem      MECH_SYSTEM_NAME - Mechanical system name (default: the first one)
 rem      ANSYS_ACT_WAIT_SECONDS - how long to wait for results.csv after
 rem                         Update() (default 300)
+rem      ANSYS_ACT_VER    - ACT version directory (default 211, i.e. 21R1)
 rem
 rem  Exit codes:
 rem      0 - runwb2 returned 0, no AUTOMATION-FAILED, AUTOMATION-OK present
@@ -73,7 +74,8 @@ if not exist "%JOURNAL%" (
 rem The extension is installed into the user ACT directory. Without it nothing
 rem runs the pipeline and the journal would just time out waiting for results.
 if not defined APPDATA set "APPDATA=%USERPROFILE%\AppData\Roaming"
-if not exist "%APPDATA%\Ansys\v211\ACT\extensions\ansys_automation.xml" (
+if not defined ANSYS_ACT_VER set "ANSYS_ACT_VER=211"
+if not exist "%APPDATA%\Ansys\v%ANSYS_ACT_VER%\ACT\extensions\ansys_automation.xml" (
     echo ERROR: ACT extension is not installed:
     echo        "%APPDATA%\Ansys\v211\ACT\extensions\ansys_automation.xml"
     echo        Run scripts\install_act_extension.bat once, then repeat.
