@@ -319,15 +319,30 @@ class FakeConnections(object):
 
 
 class FakeBody(object):
-    """Двойник тела геометрии: только имя (болты ``mbolt<d>``)."""
+    """Двойник тела геометрии: имя и категория (болты ``mbolt<d>``)."""
+
+    DataModelObjectCategory = "Body"
 
     def __init__(self, name):
         self.Name = name
+        self.Volume = 1.0
+        self.Material = "Structural Steel"
+
+
+class FakeBodyGroup(object):
+    """Двойник группы/сборки дерева геометрии: только Children."""
+
+    DataModelObjectCategory = "Part"
+
+    def __init__(self, children=None):
+        self.Children = FakeCollection(children or [])
 
 
 class FakeGeometry(object):
-    def __init__(self, bodies=None):
-        self.Children = FakeCollection(FakeBody(name) for name in (bodies or []))
+    def __init__(self, bodies=None, groups=None):
+        items = [FakeBody(name) for name in (bodies or [])]
+        items.extend(groups or [])
+        self.Children = FakeCollection(items)
 
 
 class FakeForce(object):
@@ -343,11 +358,11 @@ class FakeForce(object):
 
 
 class FakeModel(object):
-    def __init__(self, ns_names, contacts=None, bodies=None):
+    def __init__(self, ns_names, contacts=None, bodies=None, groups=None):
         self.NamedSelections = FakeNamedSelections(ns_names)
         self.Mesh = FakeMesh()
         self.Connections = FakeConnections(contacts or [])
-        self.Geometry = FakeGeometry(bodies or [])
+        self.Geometry = FakeGeometry(bodies or [], groups or [])
 
 
 class FakeAnalysis(object):
@@ -410,7 +425,7 @@ class FakeContext(object):
                  boundary_conditions=None, contact_settings=None,
                  mesh_config=None, project_settings=None, contacts=None,
                  bodies=None, loads=None, bolt_pretension=None,
-                 analysis_scenarios=None):
+                 analysis_scenarios=None, body_groups=None):
         self.log = FakeLog()
         self.Quantity = FakeQuantity
         self.enums = {
@@ -419,7 +434,8 @@ class FakeContext(object):
             "MeshMethodAlgorithm": FakeMeshMethodAlgorithm,
             "ElementOrder": FakeElementOrder,
         }
-        self.model = FakeModel(ns_names or [], contacts=contacts, bodies=bodies)
+        self.model = FakeModel(ns_names or [], contacts=contacts, bodies=bodies,
+                               groups=body_groups)
         self.analysis = FakeAnalysis(steps=steps, solution=solution) if analysis else None
         self.ext_api = FakeExtApi()
         structure_type = {
@@ -488,6 +504,25 @@ class BoltManagerTestCase(unittest.TestCase):
         self.assertAlmostEqual(quantity.value, 2027.0, delta=0.1)
         self.assertEqual(quantity.unit, "N")
         self.assertEqual(bolt.define_by_calls, [(2, "LOCK"), (3, "LOCK")])
+
+    def test_finds_bolt_body_inside_group(self):
+        group = FakeBodyGroup([FakeBody("mbolt10")])
+        context = FakeContext(ns_names=["gu_bolt1_f"], body_groups=[group],
+                              bolt_pretension=self.BOLT_CONFIG, steps=2)
+        BoltManager(context).setup_bolt_pretensions()
+
+        self.assertEqual(len(context.analysis.bolts), 1)
+        quantity = context.analysis.bolts[0].Preload.Output.values[0][1]
+        self.assertAlmostEqual(quantity.value, 2432.0, delta=0.1)
+
+    def test_group_name_is_not_treated_as_body(self):
+        group = FakeBodyGroup([FakeBody("truba42")])
+        context = FakeContext(ns_names=["gu_bolt1_f"], body_groups=[group],
+                              bolt_pretension=self.BOLT_CONFIG)
+        BoltManager(context).setup_bolt_pretensions()
+
+        self.assertEqual(context.analysis.bolts, [])
+        self.assertTrue(context.log.has("warning", "mbolt"))
 
     def test_uses_default_when_diameter_not_in_table(self):
         context = FakeContext(ns_names=["gu_bolt1_f"], bodies=["mbolt33"],

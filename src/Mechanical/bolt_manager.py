@@ -22,6 +22,7 @@
 """
 
 from Mechanical import pretension
+from Mechanical import utils
 
 # Имена NS болтов: gu_bolt<N>_f — поверхность приложения нагрузки.
 BOLT_NS_PREFIX = "gu_bolt"
@@ -91,18 +92,22 @@ class BoltManager(object):
             self._create_bolt_pretension(ns_obj, preload_n, diameter)
 
     def _bolt_bodies(self):
-        """Список пар ``(имя тела, диаметр)`` по телам ``mbolt<d>``."""
+        """Список пар ``(имя тела, диаметр)`` по телам ``mbolt<d>``.
+
+        Обход рекурсивный: ``Geometry.Children`` верхнего уровня — это группы
+        (``SYS``, ``NIZ``), тела лежат внутри них (см. ``utils.iter_bodies``).
+        """
         bodies = []
         if not self.model:
             return bodies
 
         try:
-            children = self.model.Geometry.Children
+            found = utils.iter_bodies(self.model)
         except Exception as exc:
             self.log.warning(u"Геометрия недоступна: {0}".format(exc))
             return bodies
 
-        for body in children or []:
+        for body in found:
             name = getattr(body, "Name", u"") or u""
             diameter = self._diameter_from_body(name)
             if diameter is not None:
