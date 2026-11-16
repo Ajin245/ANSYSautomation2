@@ -91,6 +91,10 @@ class BoltManager(object):
         for ns_obj in ns_objects:
             self._create_bolt_pretension(ns_obj, preload_n, diameter)
 
+    def has_bolt_bodies(self):
+        """True, если в геометрии есть тела ``mbolt*`` (нужен шаг затяжки)."""
+        return bool(self._bolt_bodies())
+
     def _bolt_bodies(self):
         """Список пар ``(имя тела, диаметр)`` по телам ``mbolt<d>``.
 

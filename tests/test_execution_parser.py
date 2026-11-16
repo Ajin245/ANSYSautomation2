@@ -99,6 +99,31 @@ class ExecutionParserTestCase(unittest.TestCase):
         self.assertEqual(steps[1][1]['fx'], 1000)
         self.assertEqual(ep.build_load_steps(cases, None), cases)
 
+    def test_tightening_step_goes_first_with_zero_loads(self):
+        cases = [('НУЭ', {'fx': 1000, 'fy': 1700, 'fz': -3300, 'mx': 5}),
+                 ('НУЭ+ПЗ', {'fx': 1500, 'fy': 2550, 'fz': -4950, 'mx': 7})]
+
+        steps = ep.build_load_steps(cases, 0.5, tightening=True)
+
+        self.assertEqual([name for name, _values in steps],
+                         ['Затяжка', 'Разгон 0.5xНУЭ', 'НУЭ', 'НУЭ+ПЗ'])
+        tightening = steps[0][1]
+        self.assertEqual(sorted(tightening.keys()), ['fx', 'fy', 'fz', 'mx'])
+        for key in tightening:
+            self.assertEqual(tightening[key], 0)
+        # Разгон остаётся после затяжки и считается от первого режима.
+        self.assertEqual(steps[1][1]['fx'], 500)
+        self.assertEqual(steps[1][1]['mx'], 2.5)
+
+    def test_tightening_step_without_ramp(self):
+        cases = [('НУЭ', {'fx': 1000})]
+
+        steps = ep.build_load_steps(cases, None, tightening=True)
+
+        self.assertEqual([name for name, _values in steps], ['Затяжка', 'НУЭ'])
+        self.assertEqual(steps[0][1], {'fx': 0})
+        self.assertEqual(steps[1][1], {'fx': 1000})
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -249,8 +249,10 @@ class AnalysisManager:
     def _load_steps(self):
         """Шаги нагружения с промежуточным разгоном из сценария анализа.
 
-        Возвращает пары ``(имя_шага, значения)``: разгон 0.5xНУЭ (только для
-        сходимости, в результаты не идёт), затем НУЭ и НУЭ+ПЗ.
+        Возвращает пары ``(имя_шага, значения)``. При наличии тел болтов первым
+        идёт шаг затяжки с нулевыми нагрузками (на нём работает только
+        преднатяг), затем разгон 0.5xНУЭ (только для сходимости, в результаты
+        не идёт), затем НУЭ и НУЭ+ПЗ.
         """
         struct_config = self.context.configs.get("structure_type", {}) or {}
         execution_no = getattr(self.context, "execution_no", None)
@@ -258,7 +260,8 @@ class AnalysisManager:
         scenario = self.context.configs.get("analysis_scenarios", {}).get(
             "standard_sequence", {}) or {}
         ramp_factor = scenario.get("ramp_factor")
-        return execution_parser.build_load_steps(cases, ramp_factor)
+        return execution_parser.build_load_steps(
+            cases, ramp_factor, tightening=self.bolt_manager.has_bolt_bodies())
 
     def _apply_loads(self):
         """Применяет силы (и моменты, если они есть в конфиге) по шагам.

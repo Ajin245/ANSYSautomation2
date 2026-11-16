@@ -635,6 +635,30 @@ class LoadsTestCase(unittest.TestCase):
         fz_values = [quantity.value for quantity in force.ZComponent.Output.DiscreteValues]
         self.assertEqual(fz_values, [-1650.0, -3300.0, -4950.0])
 
+    def test_bolted_model_has_zero_force_at_tightening_step(self):
+        # Болты есть -> первым идёт шаг затяжки: сила на нём нулевая,
+        # разгон сдвигается на второй шаг, режимы — на третий и четвёртый.
+        context = FakeContext(ns_names=["gu_force", "gu_bolt1_f"],
+                              bodies=["mbolt8"],
+                              bolt_pretension=BoltManagerTestCase.BOLT_CONFIG,
+                              analysis_scenarios={"standard_sequence": {"ramp_factor": 0.5}})
+
+        AnalysisManager(context).apply_boundary_conditions_and_loads()
+
+        self.assertEqual(context.analysis.AnalysisSettings.NumberOfSteps, 4)
+        force = context.analysis.forces[0]
+        self.assertEqual([quantity.value for quantity in force.XComponent.Output.DiscreteValues],
+                         [0.0, 500.0, 1000.0, 1500.0])
+        self.assertEqual([quantity.value for quantity in force.ZComponent.Output.DiscreteValues],
+                         [0.0, -1650.0, -3300.0, -4950.0])
+        self.assertEqual([quantity.value for quantity in force.XComponent.Inputs[0].DiscreteValues],
+                         [1.0, 2.0, 3.0, 4.0])
+        # Преднатяг — на первом шаге, блокировка — со второго по четвёртый.
+        bolt = context.analysis.bolts[0]
+        self.assertEqual(bolt.Preload.Output.values[0][0], 0)
+        self.assertEqual([step for step, _define_by in bolt.define_by_calls], [2, 3, 4])
+        self.assertTrue(context.log.has("info", "Затяжка"))
+
     def test_without_ramp_two_steps(self):
         context = FakeContext(ns_names=["gu_fixed", "gu_force"], steps=3)
         AnalysisManager(context).apply_boundary_conditions_and_loads()
