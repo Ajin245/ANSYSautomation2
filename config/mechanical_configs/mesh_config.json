@@ -3,19 +3,19 @@
     "mbolt": {
       "meshCoef": 6.7,
       "meshMethod": "Sweep",
-	  "meshAlgorithm" : "Axisymmetric",
+      "meshAlgorithm": "Axisymmetric",
       "elementOrder": "Quadratic"
     },
     "mgaika": {
       "meshCoef": 7.2,
       "meshMethod": "Sweep",
-	  "meshAlgorithm" : "Axisymmetric",  
+      "meshAlgorithm": "Axisymmetric",
       "elementOrder": "ProgramControlled"
     },
     "shaiba": {
       "meshCoef": 2.0,
       "meshMethod": "Sweep",
-	  "meshAlgorithm" : "Axisymmetric",
+      "meshAlgorithm": "Axisymmetric",
       "elementOrder": "ProgramControlled"
     },
     "kruk": {
@@ -30,7 +30,7 @@
     },
     "opora_niz": {
       "meshCoef": 6.0,
-      "meshMethod": "MultiZone", 
+      "meshMethod": "MultiZone",
       "elementOrder": "Quadratic"
     },
     "opora_verh": {
@@ -42,8 +42,8 @@
       "meshCoef": 4.08,
       "meshMethod": "MultiZone",
       "elementOrder": "Quadratic",
-	  "surfaceMeshMethod" : "Uniform",
-	  "freeMeshType":"HexaCore"
+      "surfaceMeshMethod": "Uniform",
+      "freeMeshType": "HexaCore"
     },
     "shponka": {
       "meshCoef": 4.0,
@@ -85,15 +85,16 @@
       "meshMethod": "MultiZone",
       "elementOrder": "ProgramControlled"
     },
-	"upor": {
-     "meshCoef": 3, 
-     "meshMethod": "MultiZone",
-     "elementOrder": "ProgramControlled"
-	},
-	"podkladka": {
+    "upor": {
+      "meshCoef": 3,
+      "meshMethod": "MultiZone",
+      "elementOrder": "ProgramControlled"
+    },
+    "podkladka": {
       "meshCoef": 1,
       "meshMethod": "MultiZone",
       "elementOrder": "ProgramControlled"
     }
-  }
+  },
+  "use_mesh_methods": false
 }

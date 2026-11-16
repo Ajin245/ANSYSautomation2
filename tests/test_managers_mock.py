@@ -780,6 +780,7 @@ class MeshManagerTestCase(unittest.TestCase):
     """MeshManager: ``AddSizing``, ``AddAutomaticMethod`` и группировка."""
 
     MESH_CONFIG = {
+        "use_mesh_methods": True,
         "mesh_settings": {
             "truba": {"meshCoef": 6.0, "meshMethod": "MultiZone",
                       "elementOrder": "Quadratic"},
@@ -811,6 +812,17 @@ class MeshManagerTestCase(unittest.TestCase):
         self.assertEqual(methods[0].Name, "Method_MultiZone_truba245")
         self.assertEqual(methods[0].Method, "MultiZone")
         self.assertEqual(methods[0].ElementOrder, "Quadratic")
+
+    def test_methods_are_off_by_default(self):
+        """Method_* не создаются без "use_mesh_methods": true (живой сбой 21R1)."""
+        config = {"mesh_settings": self.MESH_CONFIG["mesh_settings"]}
+        context = FakeContext(ns_names=["truba245"], mesh_config=config,
+                              project_settings={"units": {"length": "mm"}})
+
+        MeshManager(context).apply_mesh_settings()
+
+        self.assertEqual(len(context.model.Mesh.sizings), 1)
+        self.assertEqual(context.model.Mesh.methods, [])
 
     def test_skips_gu_named_selections(self):
         context = FakeContext(ns_names=["gu_force"], mesh_config=self.MESH_CONFIG,

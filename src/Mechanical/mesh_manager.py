@@ -37,6 +37,14 @@ class MeshManager:
             return
 
         mesh_rules = settings.get("mesh_settings", {})
+        # Создание Method_* (Sweep/MultiZone) по умолчанию ВЫКЛЮЧЕНО: на живой
+        # геометрии 8946 набор из 12 методов роняет генерацию сетки в 0 элементов
+        # без внятного сообщения (живой прогон 21R1, 2026-11-16). Размеры
+        # (Sizing_*) работают и дают корректную сетку. Включается в конфиге:
+        # "use_mesh_methods": true — только после разбора причин сбоя.
+        self.use_methods = bool(settings.get("use_mesh_methods", False))
+        if not self.use_methods:
+            self.log.info(u"Method_* отключены конфигом (use_mesh_methods=false).")
         mesh = self.model.Mesh
         
         # Получаем все Named Selections
@@ -191,7 +199,7 @@ class MeshManager:
                     self.log.warning(u"Не удалось извлечь число из '{0}' для Sizing".format(ns_name))
 
             # 2. Добавление Method (Sweep, MultiZone и т.д.)
-            if mesh_method_type:
+            if mesh_method_type and getattr(self, "use_methods", False):
                 method = mesh_obj.AddAutomaticMethod()
                 method.Name = u"Method_{0}_{1}".format(mesh_method_type, ns_name)
                 method.Location = location if location is not None else ns_obj
