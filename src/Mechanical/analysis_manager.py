@@ -102,9 +102,7 @@ class AnalysisManager:
         scenario_name = "standard_sequence"
         scenario = self.context.configs.get("analysis_scenarios", {}).get(scenario_name) or {}
 
-        struct_config = self.context.configs.get("structure_type", {}) or {}
-        execution_no = getattr(self.context, "execution_no", None)
-        cases = execution_parser.select_load_cases(struct_config, execution_no)
+        cases = self._load_steps()
 
         settings = self.analysis.AnalysisSettings
         settings.NumberOfSteps = len(cases)
@@ -248,6 +246,20 @@ class AnalysisManager:
     # Порядок — от наиболее вероятного; отсутствие всех = ошибка конфига.
     MOMENT_METHODS = ("AddMoment", "AddMomentLoad", "AddRemoteMoment")
 
+    def _load_steps(self):
+        """Шаги нагружения с промежуточным разгоном из сценария анализа.
+
+        Возвращает пары ``(имя_шага, значения)``: разгон 0.5xНУЭ (только для
+        сходимости, в результаты не идёт), затем НУЭ и НУЭ+ПЗ.
+        """
+        struct_config = self.context.configs.get("structure_type", {}) or {}
+        execution_no = getattr(self.context, "execution_no", None)
+        cases = execution_parser.select_load_cases(struct_config, execution_no)
+        scenario = self.context.configs.get("analysis_scenarios", {}).get(
+            "standard_sequence", {}) or {}
+        ramp_factor = scenario.get("ramp_factor")
+        return execution_parser.build_load_steps(cases, ramp_factor)
+
     def _apply_loads(self):
         """Применяет силы (и моменты, если они есть в конфиге) по шагам.
 
@@ -263,7 +275,7 @@ class AnalysisManager:
         moment_ns_name = load_ns_map.get("moment", u"gu_moment")
 
         execution_no = getattr(self.context, "execution_no", None)
-        cases = execution_parser.select_load_cases(struct_config, execution_no)
+        cases = self._load_steps()
 
         Quantity = self.context.Quantity
         if not Quantity:

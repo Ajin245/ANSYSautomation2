@@ -93,6 +93,12 @@ class ExecutionParserTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             ep.select_load_cases(structure_type, '99')
 
+        steps = ep.build_load_steps(cases, 0.5)
+        self.assertEqual([name for name, _values in steps][0].startswith('Разгон'), True)
+        self.assertEqual(len(steps), 3)
+        self.assertEqual(steps[1][1]['fx'], 1000)
+        self.assertEqual(ep.build_load_steps(cases, None), cases)
+
 
 if __name__ == '__main__':
     unittest.main()

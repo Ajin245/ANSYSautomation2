@@ -409,7 +409,8 @@ class FakeContext(object):
                  structure_type_id="8946", execution_no="08", analysis=True,
                  boundary_conditions=None, contact_settings=None,
                  mesh_config=None, project_settings=None, contacts=None,
-                 bodies=None, loads=None, bolt_pretension=None):
+                 bodies=None, loads=None, bolt_pretension=None,
+                 analysis_scenarios=None):
         self.log = FakeLog()
         self.Quantity = FakeQuantity
         self.enums = {
@@ -440,6 +441,8 @@ class FakeContext(object):
         self.configs = {"structure_type": structure_type}
         if bolt_pretension is not None:
             self.configs["bolt_pretension"] = bolt_pretension
+        if analysis_scenarios is not None:
+            self.configs["analysis_scenarios"] = analysis_scenarios
         if contact_settings is not None:
             self.configs["contact_settings"] = contact_settings
         if mesh_config is not None:
@@ -546,6 +549,43 @@ class BoltManagerTestCase(unittest.TestCase):
         # Болтовой код удалён из AnalysisManager: метода нет, вызов идёт через BoltManager.
         self.assertFalse(hasattr(AnalysisManager, "_setup_bolt_pretensions"))
         self.assertFalse(hasattr(AnalysisManager, "_create_bolt_pretension"))
+
+
+class LoadsTestCase(unittest.TestCase):
+    """Нагрузки: шаги из cases + промежуточный разгон для сходимости."""
+
+    def test_ramp_adds_intermediate_step(self):
+        context = FakeContext(ns_names=["gu_fixed", "gu_force"], steps=3,
+                              analysis_scenarios={"standard_sequence": {"ramp_factor": 0.5}})
+        AnalysisManager(context).apply_boundary_conditions_and_loads()
+
+        self.assertEqual(context.analysis.AnalysisSettings.NumberOfSteps, 3)
+        force = context.analysis.forces[0]
+        values = [quantity.value for quantity in force.XComponent.Output.DiscreteValues]
+        self.assertEqual(values, [500.0, 1000.0, 1500.0])
+        fz_values = [quantity.value for quantity in force.ZComponent.Output.DiscreteValues]
+        self.assertEqual(fz_values, [-1650.0, -3300.0, -4950.0])
+
+    def test_without_ramp_two_steps(self):
+        context = FakeContext(ns_names=["gu_fixed", "gu_force"], steps=3)
+        AnalysisManager(context).apply_boundary_conditions_and_loads()
+
+        self.assertEqual(context.analysis.AnalysisSettings.NumberOfSteps, 2)
+        force = context.analysis.forces[0]
+        self.assertEqual([quantity.value for quantity in force.XComponent.Output.DiscreteValues],
+                         [1000.0, 1500.0])
+
+    def test_missing_loads_raises(self):
+        context = FakeContext(ns_names=["gu_fixed", "gu_force"], steps=2,
+                              execution_no="99",
+                              loads={"08": {"cases": {"НУЭ": {"fx": 1, "fy": 1, "fz": -1}}}})
+        with self.assertRaises(ValueError):
+            AnalysisManager(context).apply_boundary_conditions_and_loads()
+
+    def test_missing_force_named_selection_raises(self):
+        context = FakeContext(ns_names=["gu_fixed"], steps=2)
+        with self.assertRaises(ValueError):
+            AnalysisManager(context).apply_boundary_conditions_and_loads()
 
 
 class RemoteDisplacementTestCase(unittest.TestCase):

@@ -198,3 +198,34 @@ def select_load_cases(structure_type, execution):
         u"У исполнения '{0}' нет ни 'cases', ни 'nominal_forces' в конфиге "
         u"конструкции".format(execution))
 
+def _pairs(mapping):
+    """Пары ключ-значение: ``.iteritems()`` в Python 2.7, ``.items()`` в python3."""
+    if hasattr(mapping, "iteritems"):
+        return mapping.iteritems()
+    return mapping.items()
+
+
+def build_load_steps(cases, ramp_factor=None):
+    """Шаги нагружения с промежуточным разгоном для сходимости.
+
+    Владелец (2026-11-14): анализируемых шагов два — НУЭ и НУЭ+ПЗ; коэффициент
+    0.5 вводится как промежуточный шаг, чтобы решатель вышел на нагрузку
+    плавно. Промежуточный шаг в результаты не идёт.
+
+    Args:
+        cases (list): пары ``(имя_шага, значения)`` из ``select_load_cases``.
+        ramp_factor (float): доля первого режима для разгона (0.5). ``None`` или
+            ``0`` — разгон не добавляется.
+
+    Returns:
+        list: пары ``(имя_шага, значения)``; первым идёт разгон, если задан.
+    """
+    steps = []
+    if ramp_factor and cases:
+        name, values = cases[0]
+        ramp = {}
+        for key, value in _pairs(values):
+            ramp[key] = value * ramp_factor
+        steps.append((u"Разгон {0}x{1}".format(ramp_factor, name), ramp))
+    steps.extend(cases)
+    return steps
