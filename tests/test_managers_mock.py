@@ -24,7 +24,7 @@ if SRC not in sys.path:
 
 from Mechanical.analysis_manager import AnalysisManager, parse_remote_displacement
 from Mechanical.bolt_manager import BoltManager
-from Mechanical.contact_manager import ContactManager
+from Mechanical.contact_manager import ContactManager, is_bolt_nut_pair
 from Mechanical.mesh_manager import MeshManager
 from Mechanical.result_manager import (ResultManager, RESULTS_PATH_ENV,
                                          resolve_export_path)
@@ -757,7 +757,7 @@ class ContactManagerTestCase(unittest.TestCase):
 
     def test_groups_contacts_by_type(self):
         bonded = FakeContact("shov_truba")
-        offset = FakeContact("mbolt_mgaika")
+        offset = FakeContact("Bonded - mbolt8 1 To SYS\\opora3 1")
         context = FakeContext(contacts=[bonded, offset],
                               contact_settings=self.CONTACT_SETTINGS)
 
@@ -820,6 +820,66 @@ class ContactManagerTestCase(unittest.TestCase):
 
         self.assertEqual(contact.ContactType, FakeContactType.Bonded)
         self.assertEqual(contact.InterfaceTreatment, FakeInterfaceTreatment.AdjustToTouch)
+
+    # Болт—гайка: всегда Bonded, независимо от типа опоры, общего правила и имени.
+    def _sliding_contact(self, name):
+        contact = FakeContact(name)
+        contact.ContactType = FakeContactType.Frictional
+        contact.InterfaceTreatment = FakeInterfaceTreatment.AddOffsetNoRamping
+        return contact
+
+    def test_bolt_nut_is_bonded_despite_support_default_frictional(self):
+        contact = self._sliding_contact("Frictional - mbolt8 1 To mgaika8 1")
+        context = FakeContext(contacts=[contact], structure_extra=self.SUPPORT_RULES)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual(contact.ContactType, FakeContactType.Bonded)
+        self.assertEqual(contact.InterfaceTreatment, FakeInterfaceTreatment.AdjustToTouch)
+        groups = {group.Name: group.Objects
+                  for group in context.ext_api.DataModel.Tree.groups}
+        self.assertEqual(groups["Bonded"], [contact])
+
+    def test_bolt_nut_is_bonded_with_reversed_sides_and_folder_path(self):
+        contact = self._sliding_contact("Bonded - SYS\\mgaika8 1 To mbolt8 1")
+        context = FakeContext(contacts=[contact], structure_extra=self.SUPPORT_RULES)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual(contact.ContactType, FakeContactType.Bonded)
+
+    def test_bolt_nut_is_bonded_when_contact_settings_has_no_such_rule(self):
+        contact = self._sliding_contact("Bonded - mbolt8 1 To mgaika8 1")
+        context = FakeContext(contacts=[contact], contact_settings=self.CONTACT_SETTINGS)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual(contact.ContactType, FakeContactType.Bonded)
+
+    def test_bolt_nut_is_bonded_when_name_cannot_be_split(self):
+        contact = self._sliding_contact("mbolt_mgaika")
+        context = FakeContext(contacts=[contact], structure_extra=self.SUPPORT_RULES)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual(contact.ContactType, FakeContactType.Bonded)
+
+    def test_bolt_to_support_is_not_forced_bonded(self):
+        contact = self._sliding_contact("Bonded - mbolt8 1 To SYS\\opora3 1")
+        context = FakeContext(contacts=[contact], structure_extra=self.SUPPORT_RULES)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual(contact.ContactType, FakeContactType.Frictional)
+
+    def test_bolt_nut_pair_predicate(self):
+        self.assertTrue(is_bolt_nut_pair("mbolt8 1", "mgaika8 1"))
+        self.assertTrue(is_bolt_nut_pair("sys\\mgaika22 2", "mbolt8 1"))
+        self.assertTrue(is_bolt_nut_pair("mgaika8 1", "mbolt8 1"))
+        self.assertFalse(is_bolt_nut_pair("mbolt8 1", "mbolt8 2"))
+        self.assertFalse(is_bolt_nut_pair("mgaika8 1", "mgaika8 2"))
+        self.assertFalse(is_bolt_nut_pair("mbolt8 1", "opora3 1"))
+        self.assertFalse(is_bolt_nut_pair(None, "mgaika8 1"))
 
 
 class MeshManagerTestCase(unittest.TestCase):

@@ -1,5 +1,51 @@
 # -*- coding: utf-8 -*-
 
+# Болт и гайка — жёсткая пара: всегда Bonded, без исключений. Правило не
+# переопределяется ни типом опоры (``support_types``), ни ``contact_settings``,
+# ни правилом по умолчанию: резьбовое соединение не может считаться скользящим.
+# Причина появления правила: при заданном ``support_type`` ветка общих правил
+# ``contact_settings`` не вызывалась вовсе, и пара болт—гайка уходила в ``default``
+# типа опоры (``Frictional``).
+BOLT_NUT_CLASSES = (u"mbolt", u"mgaika")
+BOLT_NUT_RULE = {
+    "type": "Bonded",
+    "interface_treatment": "AdjustToTouch",
+}
+
+
+def body_class(side):
+    """Класс тела из стороны контакта: ``'SYS\\mbolt8 1'`` -> ``'mbolt'``.
+
+    Args:
+        side (str): имя тела (одна сторона контакта), регистр не важен.
+
+    Returns:
+        str: ``'mbolt'``, ``'mgaika'`` или ``None``, если класс другой.
+    """
+    if not side:
+        return None
+    tail = side.replace(u"/", u"\\").split(u"\\")[-1].strip().lower()
+    for class_name in BOLT_NUT_CLASSES:
+        if tail.startswith(class_name):
+            return class_name
+    return None
+
+
+def is_bolt_nut_pair(left, right):
+    """Пара «болт—гайка»: одна сторона ``mbolt*``, другая ``mgaika*``.
+
+    Порядок сторон не важен; пара двух болтов или двух гаек парой не считается.
+
+    Args:
+        left (str): первая сторона контакта.
+        right (str): вторая сторона контакта.
+
+    Returns:
+        bool: True, если это контакт болта с гайкой.
+    """
+    return set([body_class(left), body_class(right)]) == set(BOLT_NUT_CLASSES)
+
+
 class ContactManager:
     """
     Класс для автоматизированной настройки и группировки контактов в ANSYS Mechanical.
@@ -104,11 +150,29 @@ class ContactManager:
                     contact.RenameBasedOnDefinition()
                 except:
                     pass
-                if support_rules:
+                # Болт—гайка проверяем до любых правил: пара Bonded безусловно.
+                if self._is_bolt_nut_contact(contact):
+                    self.log.info(u"Контакт '{0}': болт-гайка -> Bonded (жёсткое правило)".format(
+                        contact.Name))
+                    self._configure_contact(contact, dict(BOLT_NUT_RULE))
+                elif support_rules:
                     self._apply_support_rules(contact, support_rules)
                 else:
                     self._apply_rules_to_contact(contact, contact_rules)
                 self._categorize_contact(contact)
+
+    def _is_bolt_nut_contact(self, contact):
+        """True, если контакт соединяет тело болта с телом гайки.
+
+        Стороны берутся из имени контакта; если имя разобрать не удалось
+        (переименование не сработало), проверяются классы прямо в имени —
+        правило не должно зависеть от форматирования.
+        """
+        left, right = self._split_pair(contact.Name)
+        if left and right:
+            return is_bolt_nut_pair(left, right)
+        name = (contact.Name or u"").lower()
+        return all(class_name in name for class_name in BOLT_NUT_CLASSES)
 
     @staticmethod
     def _split_pair(name):
