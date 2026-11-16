@@ -456,7 +456,7 @@ class FakeContext(object):
                  boundary_conditions=None, contact_settings=None,
                  mesh_config=None, project_settings=None, contacts=None,
                  bodies=None, loads=None, bolt_pretension=None,
-                 analysis_scenarios=None, body_groups=None):
+                 analysis_scenarios=None, body_groups=None, structure_extra=None):
         self.log = FakeLog()
         self.Quantity = FakeQuantity
         self.enums = {
@@ -486,6 +486,8 @@ class FakeContext(object):
             structure_type["torque_nm"] = torque
         if boundary_conditions is not None:
             structure_type["boundary_conditions"] = boundary_conditions
+        if structure_extra:
+            structure_type.update(structure_extra)
         self.configs = {"structure_type": structure_type}
         if bolt_pretension is not None:
             self.configs["bolt_pretension"] = bolt_pretension
@@ -764,7 +766,51 @@ class ContactManagerTestCase(unittest.TestCase):
         groups = {group.Name: group.Objects
                   for group in context.ext_api.DataModel.Tree.groups}
         self.assertEqual(groups["Bonded"], [bonded])
-        self.assertEqual(groups["Offset"], [offset])
+        self.assertEqual(groups["FrictOffset"], [offset])
+
+    SUPPORT_RULES = {
+        "support_type": "sliding_guide",
+        "support_types": {
+            "sliding_guide": {
+                "friction_coefficient": 0.3,
+                "pairs": [
+                    {"a": ["rebro"], "b": ["*"], "type": "Bonded",
+                     "interface_treatment": "AdjustToTouch"},
+                    {"a": ["opora_niz"], "b": ["osnovanie"], "type": "Bonded",
+                     "interface_treatment": "AdjustToTouch"},
+                    {"a": ["opora_niz"], "b": ["opora"], "type": "Bonded",
+                     "interface_treatment": "AdjustToTouch"},
+                ],
+                "default": {"type": "Frictional", "friction_coefficient": 0.3,
+                            "interface_treatment": "AdjustToTouch"},
+            },
+        },
+    }
+
+    def test_support_type_makes_rebro_bonded(self):
+        contact = FakeContact("Bonded - rebro1 To opora_niz22 2")
+        context = FakeContext(contacts=[contact], structure_extra=self.SUPPORT_RULES)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual(contact.ContactType, FakeContactType.Bonded)
+
+    def test_support_type_makes_opora_niz_to_opora_bonded(self):
+        contact = FakeContact("Frictional - opora_niz22 2 To SYS\\opora3 1")
+        context = FakeContext(contacts=[contact], structure_extra=self.SUPPORT_RULES)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual(contact.ContactType, FakeContactType.Bonded)
+
+    def test_support_type_default_is_frictional_with_coefficient(self):
+        contact = FakeContact("Bonded - truba42 1 To SYS\\opora_niz22 1")
+        context = FakeContext(contacts=[contact], structure_extra=self.SUPPORT_RULES)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual(contact.ContactType, FakeContactType.Frictional)
+        self.assertEqual(contact.FrictionCoefficient, 0.3)
 
     def test_bonded_rule_sets_contact_type(self):
         contact = FakeContact("shov_truba")
@@ -892,7 +938,7 @@ class MeshManagerTestCase(unittest.TestCase):
         groups = {group.Name: group.Objects
                   for group in context.ext_api.DataModel.Tree.groups}
         self.assertEqual(groups["Sizing"], context.model.Mesh.sizings)
-        self.assertEqual(groups["Method"], context.model.Mesh.methods)
+        self.assertEqual(groups["Methods"], context.model.Mesh.methods)
 
 
 class ResultManagerTestCase(unittest.TestCase):

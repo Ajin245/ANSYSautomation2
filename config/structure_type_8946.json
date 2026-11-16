@@ -207,5 +207,49 @@
         "criteria": "bottom_faces"
       }
     ]
+  },
+  "support_type": "sliding_guide",
+  "support_types": {
+    "sliding_guide": {
+      "description": "Опора скользящая направляющая",
+      "friction_coefficient": 0.3,
+      "pairs": [
+        {
+          "a": [
+            "rebro"
+          ],
+          "b": [
+            "*"
+          ],
+          "type": "Bonded",
+          "interface_treatment": "AdjustToTouch"
+        },
+        {
+          "a": [
+            "opora_niz"
+          ],
+          "b": [
+            "osnovanie"
+          ],
+          "type": "Bonded",
+          "interface_treatment": "AdjustToTouch"
+        },
+        {
+          "a": [
+            "opora_niz"
+          ],
+          "b": [
+            "opora"
+          ],
+          "type": "Bonded",
+          "interface_treatment": "AdjustToTouch"
+        }
+      ],
+      "default": {
+        "type": "Frictional",
+        "friction_coefficient": 0.3,
+        "interface_treatment": "AdjustToTouch"
+      }
+    }
   }
 }

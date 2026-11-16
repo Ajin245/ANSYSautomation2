@@ -15,7 +15,7 @@
     "shaiba": {
       "meshCoef": 2.0,
       "meshMethod": "Sweep",
-      "meshAlgorithm": "Axisymmetric",
+      "meshAlgorithm": "ProgramControlled",
       "elementOrder": "ProgramControlled"
     },
     "kruk": {
@@ -63,17 +63,20 @@
     "shov": {
       "meshCoef": 1.0,
       "meshMethod": "Sweep",
-      "elementOrder": "ProgramControlled"
+      "elementOrder": "ProgramControlled",
+      "meshAlgorithm": "ProgramControlled"
     },
     "shov_truba": {
       "meshCoef": 1.0,
       "meshMethod": "Sweep",
-      "elementOrder": "ProgramControlled"
+      "elementOrder": "ProgramControlled",
+      "meshAlgorithm": "ProgramControlled"
     },
     "flanec": {
       "meshCoef": 3.0,
       "meshMethod": "Sweep",
-      "elementOrder": "ProgramControlled"
+      "elementOrder": "ProgramControlled",
+      "meshAlgorithm": "ProgramControlled"
     },
     "korpus": {
       "meshCoef": 4.0,
@@ -81,9 +84,9 @@
       "elementOrder": "Quadratic"
     },
     "rebro": {
-      "meshCoef": 3,
+      "meshCoef": 3.0,
       "meshMethod": "MultiZone",
-      "elementOrder": "ProgramControlled"
+      "elementOrder": "Quadratic"
     },
     "upor": {
       "meshCoef": 3,

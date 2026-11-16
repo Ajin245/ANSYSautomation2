@@ -211,10 +211,16 @@ class MeshManager:
                     if "Sweep" in mesh_method_type:
                         method.Method = mt_enum.Sweep
                         # Настройка алгоритма для Sweep
-                        if mesh_algorithm == "Axisymmetric":
-                            ma_enum = self.enums.get("MeshMethodAlgorithm")
-                            if ma_enum:
+                        # Axisymmetric допустим только у осесимметричных тел
+                        # (болты, гайки). Всем остальным — ProgramControlled:
+                        # в 21R1 Sweep по умолчанию ставит Axisymmetric, и на
+                        # неосесимметричном теле расчёт не запускается.
+                        ma_enum = self.enums.get("MeshMethodAlgorithm")
+                        if ma_enum:
+                            if mesh_algorithm == "Axisymmetric":
                                 method.Algorithm = ma_enum.Axisymmetric
+                            else:
+                                method.Algorithm = ma_enum.ProgramControlled
                     elif "MultiZone" in mesh_method_type:
                         method.Method = mt_enum.MultiZone
                         
@@ -258,9 +264,10 @@ class MeshManager:
         Создает группы в дереве проекта на основе собранных объектов сетки.
         """
         self.log.info(u"Группировка настроек сетки в дереве...")
+        # Две папки, по образцу контактов: контролы не должны сваливаться в кучу.
         groups = {
-            "Sizing": self.sizings_to_collect,
-            "Method": self.methods_to_collect
+            "Methods": self.methods_to_collect,
+            "Sizing": self.sizings_to_collect
         }
         
         for group_name, objects in groups.items():
