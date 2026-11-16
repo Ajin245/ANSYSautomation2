@@ -991,3 +991,41 @@ class ResultManagerTestCase(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PurgeTestCase(unittest.TestCase):
+    """Повторная настройка не должна дублировать объекты (Delete подтверждён в 21R1)."""
+
+    class _Obj(object):
+        def __init__(self, name):
+            self.Name = name
+            self.deleted = False
+            self.Delete = self._delete
+
+        def _delete(self):
+            self.deleted = True
+
+    class _Box(object):
+        def __init__(self, objects):
+            self.Children = FakeCollection(objects)
+
+    def test_deletes_pipeline_objects_only(self):
+        from Mechanical import utils as mei
+
+        ours = [self._Obj("Force_gu_force"), self._Obj("Sizing_truba42"),
+                self._Obj("Bolt_gu_bolt1_f"), self._Obj("Total Deformation")]
+        theirs = [self._Obj("MyOwnSupport"), self._Obj("Custom Force")]
+        box = self._Box(ours + theirs)
+
+        removed = mei.purge_automatic_objects(box)
+
+        self.assertEqual(removed, 4)
+        for obj in ours:
+            self.assertTrue(obj.deleted)
+        for obj in theirs:
+            self.assertFalse(obj.deleted)
+
+    def test_empty_container_is_safe(self):
+        from Mechanical import utils as mei
+
+        self.assertEqual(mei.purge_automatic_objects(None), 0)

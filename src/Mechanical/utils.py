@@ -105,3 +105,69 @@ def body_names(model):
         name = getattr(body, "Name", None)
         names.append(name if name is not None else u"?")
     return names
+
+# Объекты, которые создаёт конвейер. По этим префиксам они удаляются перед
+# повторной настройкой: Mechanical хранит модель в ``SYS.mechdb``, поэтому без
+# чистки каждый прогон добавлял ещё один набор ГУ/нагрузок (живой прогон 21R1).
+AUTOMATIC_PREFIXES = (
+    u"Fixed_",
+    u"RemoteDisp_",
+    u"Force_",
+    u"Bolt_",
+    u"Sizing_",
+    u"Method_",
+    u"Auto_",
+)
+
+
+# Имена без префикса, которые тоже создаёт конвейер (старые версии называли
+# нагрузку просто ``Force``, результаты — по умолчанию).
+AUTOMATIC_EXACT_NAMES = (u"Force", u"Total Deformation", u"Equivalent Stress")
+
+
+def is_automatic_object(obj):
+    """True, если объект создан конвейером (по префиксу имени)."""
+    name = getattr(obj, "Name", None)
+    if not name:
+        return False
+    if name in AUTOMATIC_EXACT_NAMES:
+        return True
+    for prefix in AUTOMATIC_PREFIXES:
+        if name.startswith(prefix):
+            return True
+    return False
+
+
+def purge_automatic_objects(container, logger=None):
+    """Удалить объекты конвейера из контейнера (``Model.Mesh``, ``Analysis``).
+
+    ``Delete()`` у объекта Mechanical подтверждён живым прогоном 21R1;
+    ``Tree.Delete``/``RemoveObject`` в этой сборке отсутствуют.
+
+    Args:
+        container: контейнер с ``Children`` (Mesh, Analysis, Solution).
+        logger: лог контекста (необязательно).
+
+    Returns:
+        int: сколько объектов удалено.
+    """
+    removed = 0
+    if container is None:
+        return removed
+
+    try:
+        children = list(container.Children)
+    except Exception:
+        return removed
+
+    for obj in children:
+        if not is_automatic_object(obj):
+            continue
+        try:
+            obj.Delete()
+            removed += 1
+        except Exception as exc:
+            if logger is not None:
+                logger.warning(u"Не удалось удалить '{0}': {1}".format(
+                    getattr(obj, "Name", u"?"), exc))
+    return removed

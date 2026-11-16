@@ -291,6 +291,8 @@ class AnalysisManager:
         time_points = [Quantity(i, "s") for i in range(1, steps + 1)]
 
         force = self.analysis.AddForce()
+        # Имя с префиксом: повторный прогон удаляет объекты по префиксу.
+        force.Name = u"Force_{0}".format(ns_force.Name if ns_force is not None else u"load")
         force.Location = ns_force
         self._set_define_by(force)
 

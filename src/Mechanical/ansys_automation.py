@@ -55,6 +55,14 @@ def run_automation():
         context = ProjectContext(ExtAPI, Quantity, ansys_enums)
         context.log.info(u"Начало работы...")
 
+        # Повторный прогон не должен дублировать ГУ/нагрузки/сетку: Mechanical
+        # держит модель в SYS.mechdb, и объекты прошлого запуска остаются.
+        from Mechanical import utils as mei_utils
+        removed = mei_utils.purge_automatic_objects(context.analysis, context.log)
+        removed += mei_utils.purge_automatic_objects(context.model.Mesh, context.log)
+        if removed:
+            context.log.info(u"Удалено объектов прошлого прогона: {0}".format(removed))
+
         contact_mgr = ContactManager(context)
         mesh_mgr = MeshManager(context)
         analysis_mgr = AnalysisManager(context)
