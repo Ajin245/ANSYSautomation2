@@ -63,6 +63,7 @@ def run_automation():
     
         contact_mgr.setup_contacts()
         mesh_mgr.apply_mesh_settings()
+        mesh_mgr.generate_mesh()
         analysis_mgr.apply_boundary_conditions_and_loads()
         validation_mgr.validate_model_setup()
         result_mgr.setup_plot_results()

@@ -87,7 +87,61 @@ class MeshManager:
 
         self.log.info(u"Настройка сетки КЭ завершена.")
 
-    def _apply_mesh_to_ns(self, mesh_obj, ns_obj, params, label=None):
+    def _selection_info(self, body):
+        """``ISelectionInfo`` для тела.
+
+        Живой прогон 21R1: ``sizing.Location = body`` падает
+        ``TypeError: expected ISelectionInfo, got Body``. Поэтому строим
+        выборку через ``ExtAPI.SelectionManager`` (RESEARCH-ANSYS-API §3.9, факт 22).
+        """
+        manager = self.context.ext_api.SelectionManager
+        enum_cls = None
+        try:
+            from Ansys.Mechanical.DataModel.Enums import SelectionTypeEnum as enum_cls
+        except Exception:
+            enum_cls = globals().get("SelectionTypeEnum") or self.enums.get("SelectionTypeEnum")
+        if enum_cls is None:
+            raise RuntimeError(u"SelectionTypeEnum недоступен в этой сборке")
+
+        info = manager.CreateSelectionInfo(enum_cls.GeometryEntities)
+        try:
+            ids = [body.GetGeoBody().Id]
+        except Exception:
+            try:
+                ids = [body.Id]
+            except Exception:
+                ids = [getattr(body, "Name", None)]
+        info.Ids = ids
+        return info
+
+    def generate_mesh(self):
+        """Сгенерировать сетку и убедиться, что элементы действительно есть.
+
+        ``Analysis.Solve(True)`` в 21R1 возвращает управление без исключения
+        даже при нулевом числе элементов, поэтому проверка обязательна:
+        иначе ``results.csv`` выгружается с одним заголовком.
+        """
+        if not self.model:
+            raise RuntimeError(u"модель недоступна: сетку генерировать нечем")
+
+        mesh = self.model.Mesh
+        self.log.info(u"Генерация сетки КЭ...")
+        mesh.GenerateMesh()
+
+        elements = None
+        try:
+            elements = mesh.Elements
+        except Exception as exc:
+            self.log.warning(u"Не удалось прочитать число элементов: {0}".format(exc))
+
+        self.log.info(u"Элементов после генерации: {0}".format(elements))
+        if not elements:
+            raise RuntimeError(
+                u"сетка не сгенерирована (элементов 0): проверьте контролы Sizing/Method "
+                u"и размеры элементов")
+        return elements
+
+    def _apply_mesh_to_ns(self, mesh_obj, ns_obj, params, label=None, location=None):
         """
         Применяет метод и размер сетки к Named Selection или к телу.
 
@@ -120,7 +174,7 @@ class MeshManager:
             if mesh_coef:
                 sizing = mesh_obj.AddSizing()
                 sizing.Name = u"Sizing_{0}".format(ns_name)
-                sizing.Location = ns_obj
+                sizing.Location = location if location is not None else ns_obj
                 self.sizings_to_collect.append(sizing)
                 
                 if match:
@@ -140,7 +194,7 @@ class MeshManager:
             if mesh_method_type:
                 method = mesh_obj.AddAutomaticMethod()
                 method.Name = u"Method_{0}_{1}".format(mesh_method_type, ns_name)
-                method.Location = ns_obj
+                method.Location = location if location is not None else ns_obj
                 self.methods_to_collect.append(method)
                 
                 # Установка типа метода
@@ -248,5 +302,12 @@ class MeshManager:
             if not best_key:
                 continue
 
+            try:
+                location = self._selection_info(body)
+            except Exception as exc:
+                self.log.warning(
+                    u"Тело '{0}' без NS: выборку не построить ({1}); создайте NS вручную".format(name, exc))
+                continue
             self.log.info(u"Нет NS для тела '{0}' — правило '{1}' применяется к телу".format(name, best_key))
-            self._apply_mesh_to_ns(mesh, body, mesh_rules[best_key].copy(), label=base)
+            self._apply_mesh_to_ns(mesh, body, mesh_rules[best_key].copy(),
+                                   label=base, location=location)

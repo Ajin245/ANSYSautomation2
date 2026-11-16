@@ -210,6 +210,13 @@ class FakeMesh(object):
     def __init__(self):
         self.sizings = []
         self.methods = []
+        self.Elements = 0
+        self.generated = 0
+        self.elements_after_generate = 4242
+
+    def GenerateMesh(self):
+        self.generated += 1
+        self.Elements = self.elements_after_generate
 
     def AddSizing(self):
         sizing = FakeSizing()
@@ -245,9 +252,33 @@ class FakeDataModel(object):
         self.Tree = FakeTree()
 
 
+class FakeSelectionTypeEnum(object):
+    """Двойник ``SelectionTypeEnum``: нужен только ``GeometryEntities``."""
+
+    GeometryEntities = "GeometryEntities"
+
+
+class FakeSelectionInfo(object):
+    """Двойник ISelectionInfo: только Ids."""
+
+    def __init__(self):
+        self.Ids = []
+
+
+class FakeSelectionManager(object):
+    def __init__(self):
+        self.infos = []
+
+    def CreateSelectionInfo(self, selection_type):
+        info = FakeSelectionInfo()
+        self.infos.append(info)
+        return info
+
+
 class FakeExtApi(object):
     def __init__(self):
         self.DataModel = FakeDataModel()
+        self.SelectionManager = FakeSelectionManager()
 
 
 class _EnumMember(object):
@@ -433,6 +464,7 @@ class FakeContext(object):
             "MethodType": FakeMethodType,
             "MeshMethodAlgorithm": FakeMeshMethodAlgorithm,
             "ElementOrder": FakeElementOrder,
+            "SelectionTypeEnum": FakeSelectionTypeEnum,
         }
         self.model = FakeModel(ns_names or [], contacts=contacts, bodies=bodies,
                                groups=body_groups)
@@ -802,6 +834,33 @@ class MeshManagerTestCase(unittest.TestCase):
         self.assertEqual(sizings[0].Name, "Sizing_truba42")
         # 42 / 6.0 = 7.0 мм — число берётся из имени тела, индекс " 1" отброшен.
         self.assertEqual(sizings[0].ElementSize.value, 7.0)
+
+    def test_generate_mesh_raises_when_no_elements(self):
+        context = FakeContext(ns_names=[], mesh_config=self.MESH_CONFIG)
+        manager = MeshManager(context)
+        context.model.Mesh.elements_after_generate = 0
+
+        with self.assertRaises(RuntimeError):
+            manager.generate_mesh()
+
+    def test_generate_mesh_returns_element_count(self):
+        context = FakeContext(ns_names=[], mesh_config=self.MESH_CONFIG)
+
+        elements = MeshManager(context).generate_mesh()
+
+        self.assertEqual(elements, 4242)
+
+    def test_body_sizing_uses_selection_info_not_body(self):
+        # Living 21R1: sizing.Location = Body -> TypeError; нужен ISelectionInfo.
+        context = FakeContext(ns_names=[], bodies=["truba42 1"],
+                              mesh_config=self.MESH_CONFIG,
+                              project_settings={"units": {"length": "mm"}})
+
+        MeshManager(context).apply_mesh_settings()
+
+        sizing = context.model.Mesh.sizings[0]
+        self.assertNotIsInstance(sizing.Location, FakeBody)
+        self.assertEqual(sizing.Location.Ids, ["truba42 1"])
 
     def test_body_with_named_selection_is_not_duplicated(self):
         context = FakeContext(ns_names=["truba42"], bodies=["truba42 1"],
