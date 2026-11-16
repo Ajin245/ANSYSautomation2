@@ -125,6 +125,14 @@ AUTOMATIC_PREFIXES = (
 AUTOMATIC_EXACT_NAMES = (u"Force", u"Total Deformation", u"Equivalent Stress")
 
 
+import re as _re
+
+_AUTOMATIC_PATTERNS = (
+    _re.compile(u"^Force( \\d+)?$"),
+    _re.compile(u"^FixedSupport( \\d+)?$"),
+)
+
+
 def is_automatic_object(obj):
     """True, если объект создан конвейером (по префиксу имени)."""
     name = getattr(obj, "Name", None)
@@ -132,6 +140,9 @@ def is_automatic_object(obj):
         return False
     if name in AUTOMATIC_EXACT_NAMES:
         return True
+    for pattern in _AUTOMATIC_PATTERNS:
+        if pattern.match(name):
+            return True
     for prefix in AUTOMATIC_PREFIXES:
         if name.startswith(prefix):
             return True

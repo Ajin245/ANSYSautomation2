@@ -96,5 +96,5 @@
       "elementOrder": "ProgramControlled"
     }
   },
-  "use_mesh_methods": false
+  "use_mesh_methods": true
 }
