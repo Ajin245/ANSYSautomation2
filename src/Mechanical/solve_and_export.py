@@ -66,11 +66,17 @@ def run_solve_and_export():
         print(message)
         raise RuntimeError(message)
 
-    # export_results.py — самостоятельный скрипт (выполняется на import),
-    # поэтому ему нужен явный namespace с __file__ (его читает get_project_root).
-    namespace = {"__name__": "solve_and_export_script", "__file__": export_script}
-    execfile(export_script, namespace)
+    # export_results.py — самостоятельный скрипт (выполняется на import) и
+    # обращается к глобальным именам Mechanical (``ExtAPI``, ``Quantity``).
+    # Поэтому исполняем его в СВОИХ globals, а не в пустом словаре: иначе
+    # ``NameError: global name 'ExtAPI' is not defined`` (живой прогон 21R1).
+    export_globals = globals()
+    export_globals["__file__"] = export_script
+    execfile(export_script, export_globals)
     return export_script
 
 
-run_solve_and_export()
+# В Mechanical модуль исполняется через execfile в globals конвейера, где есть
+# ExtAPI. При обычном импорте (тесты, статические проверки) запускать нечего.
+if "ExtAPI" in globals() or "Model" in globals():
+    run_solve_and_export()

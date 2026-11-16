@@ -789,6 +789,29 @@ class MeshManagerTestCase(unittest.TestCase):
         self.assertEqual(context.model.Mesh.sizings, [])
         self.assertEqual(context.model.Mesh.methods, [])
 
+    def test_applies_sizing_to_body_without_named_selection(self):
+        # Труба приходит без NS: размер сетки задаётся на само тело.
+        context = FakeContext(ns_names=[], bodies=["truba42 1", "truba42 2"],
+                              mesh_config=self.MESH_CONFIG,
+                              project_settings={"units": {"length": "mm"}})
+
+        MeshManager(context).apply_mesh_settings()
+
+        sizings = context.model.Mesh.sizings
+        self.assertEqual(len(sizings), 2)
+        self.assertEqual(sizings[0].Name, "Sizing_truba42")
+        # 42 / 6.0 = 7.0 мм — число берётся из имени тела, индекс " 1" отброшен.
+        self.assertEqual(sizings[0].ElementSize.value, 7.0)
+
+    def test_body_with_named_selection_is_not_duplicated(self):
+        context = FakeContext(ns_names=["truba42"], bodies=["truba42 1"],
+                              mesh_config=self.MESH_CONFIG,
+                              project_settings={"units": {"length": "mm"}})
+
+        MeshManager(context).apply_mesh_settings()
+
+        self.assertEqual(len(context.model.Mesh.sizings), 1)
+
     def test_groups_sizing_and_method_in_tree(self):
         context = FakeContext(ns_names=["truba245"], mesh_config=self.MESH_CONFIG,
                               project_settings={"units": {"length": "mm"}})

@@ -83,14 +83,25 @@ class MeshManager:
         except Exception as e:
             self.log.error(u"Ошибка при обходе Named Selections для сетки: {0}".format(e))
 
+        self._apply_mesh_to_bodies(mesh, mesh_rules)
+
         self.log.info(u"Настройка сетки КЭ завершена.")
 
-    def _apply_mesh_to_ns(self, mesh_obj, ns_obj, params):
+    def _apply_mesh_to_ns(self, mesh_obj, ns_obj, params, label=None):
         """
-        Применяет метод и размер сетки к конкретному Named Selection.
+        Применяет метод и размер сетки к Named Selection или к телу.
+
+        Args:
+            mesh_obj: объект ``Model.Mesh``.
+            ns_obj: Named Selection **или** тело геометрии (у обоих есть ``Name``
+                и они годятся как ``Location``).
+            params: правило из ``mesh_config``.
+            label: имя для логов и для извлечения числа; по умолчанию ``ns_obj.Name``.
         """
+        ns_name = label if label else u"?"
         try:
-            ns_name = ns_obj.Name
+            if not label:
+                ns_name = ns_obj.Name
             mesh_coef = params.get("meshCoef")
             mesh_method_type = params.get("meshMethod")
             mesh_algorithm = params.get("meshAlgorithm")
@@ -99,9 +110,11 @@ class MeshManager:
             # Получаем единицы измерения из проекта
             length_unit = self.context.configs.get("project_settings", {}).get("units", {}).get("length", "mm")
             
-            # Извлекаем число из конца имени NS (например, 'truba245' -> 245)
+            # Извлекаем число из конца имени (например, 'truba245' -> 245).
+            # У тел бывает индекс через пробел ('truba42 1') — его отбрасываем.
             import re
-            match = re.search(r"(\d+\.?\d*)$", ns_name)
+            base_name = re.sub(r"\s+\d+$", "", ns_name)
+            match = re.search(r"(\d+\.?\d*)$", base_name)
             
             # 1. Добавление Sizing (Размер элемента)
             if mesh_coef:
@@ -195,3 +208,45 @@ class MeshManager:
                     group.Name = group_name
                 except Exception as e:
                     self.log.error(u"Не удалось создать группу '{0}': {1}".format(group_name, e))
+
+    def _apply_mesh_to_bodies(self, mesh, mesh_rules):
+        """Размер на тела, которым не досталось Named Selection.
+
+        Труба приходит из SpaceClaim без NS (``truba42``), а именно её диаметр
+        задаёт размер сетки. Без этого шага труба остаётся с сеткой по
+        умолчанию — самой крупной в сборке.
+        """
+        import re
+        from Mechanical import utils
+
+        covered = []
+        try:
+            for ns in self.model.NamedSelections.Children:
+                covered.append((ns.Name or u"").lower())
+        except Exception as exc:
+            self.log.warning(u"Не удалось прочитать NS для проверки тел: {0}".format(exc))
+
+        try:
+            bodies = utils.iter_bodies(self.model)
+        except Exception as exc:
+            self.log.warning(u"Тела для проверки сетки недоступны: {0}".format(exc))
+            return
+
+        for body in bodies:
+            name = getattr(body, "Name", u"") or u""
+            if not name:
+                continue
+            base = re.sub(r"\s+\d+$", "", name).lower()
+            if any(ns == base or ns in base or base in ns for ns in covered):
+                continue
+
+            best_key = None
+            for rule_key in mesh_rules.keys():
+                if rule_key.lower() in base:
+                    if best_key is None or len(rule_key) > len(best_key):
+                        best_key = rule_key
+            if not best_key:
+                continue
+
+            self.log.info(u"Нет NS для тела '{0}' — правило '{1}' применяется к телу".format(name, best_key))
+            self._apply_mesh_to_ns(mesh, body, mesh_rules[best_key].copy(), label=base)
