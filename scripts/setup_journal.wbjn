@@ -1,0 +1,106 @@
+# encoding: utf-8
+"""Журнал Workbench для ОКОННОГО прогона без расчёта (настройка до Solve).
+
+Запуск (окно Workbench остаётся открытым, Mechanical показывает настроенную модель):
+
+    runwb2 -F "<копия>.wbpj" -R "C:\\Work\\ansys-automation\\scripts\\setup_journal.wbjn"
+
+Что делает: один ``SendCommand`` в Mechanical выполняет
+``src/Mechanical/ansys_automation.py`` — контакты, сетка, ГУ/нагрузки, валидация,
+объекты результатов. Расчёт **не запускается**: решение живёт в отдельном
+``solve_and_export.py``, и здесь оно не вызывается.
+
+Каждый шаг пишется в ``logs\\setup-mech.txt`` с немедленным закрытием файла:
+упавшее исключение внутри ``SendCommand`` наружу не всплывает, судить можно
+только по этому файлу.
+"""
+SetScriptVersion(Version="21.1.216")
+
+import os
+import time
+
+ROOT = r"C:\Work\ansys-automation"
+OUT = os.path.join(ROOT, "logs", "setup.txt")
+MECH = os.path.join(ROOT, "logs", "setup-mech.txt")
+
+
+def w(path, text):
+    handle = open(path, "a")
+    try:
+        handle.write(text + "\n")
+    finally:
+        handle.close()
+
+
+if os.path.exists(OUT):
+    os.remove(OUT)
+if os.path.exists(MECH):
+    os.remove(MECH)
+
+w(OUT, "journal start")
+system1 = GetSystem(Name="SYS")
+model1 = system1.GetContainer(ComponentName="Model")
+w(OUT, "model container ok")
+
+payload = '''
+p = r"C:\\Work\\ansys-automation\\logs\\setup-mech.txt"
+
+
+def w(t):
+    f = open(p, "a")
+    try:
+        f.write(str(t) + "\\n")
+    finally:
+        f.close()
+
+
+import os
+import traceback
+
+w("mech start")
+w("env ROOT=%r PROJ=%r STRUCTURE=%r EXEC=%r" % (
+    os.environ.get("ANSYS_AUTOMATION_ROOT"),
+    os.environ.get("ANSYS_AUTOMATION_PROJECT"),
+    os.environ.get("STRUCTURE_ID"),
+    os.environ.get("EXECUTION")))
+
+try:
+    execfile(r"C:\\Work\\ansys-automation\\src\\Mechanical\\ansys_automation.py")
+    w("setup OK")
+except:
+    w("setup FAILED:\\n" + traceback.format_exc())
+
+try:
+    w("contacts=%r" % Model.Connections.Children.Count)
+except:
+    w("contacts probe failed:\\n" + traceback.format_exc())
+
+try:
+    stats = Model.Mesh.Statistics
+    w("mesh nodes=%r elements=%r" % (stats.Nodes, stats.Elements))
+except:
+    w("mesh probe failed:\\n" + traceback.format_exc())
+
+try:
+    solution = Model.Analyses[0].Solution
+    w("solution children=%r" % solution.Children.Count)
+except:
+    w("solution probe failed:\\n" + traceback.format_exc())
+
+w("mech end")
+'''
+
+model1.SendCommand(Command=payload, Language="Python")
+w(OUT, "setup sent")
+
+deadline = time.time() + 1800
+while time.time() < deadline:
+    time.sleep(10)
+    if os.path.exists(MECH):
+        text = open(MECH).read()
+        if "mech end" in text or "setup FAILED" in text:
+            w(OUT, "setup finished")
+            break
+        w(OUT, "waiting: %d bytes" % len(text))
+
+w(OUT, "journal end")

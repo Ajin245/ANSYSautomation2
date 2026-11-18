@@ -57,6 +57,9 @@ class ContactManager:
             "Frictional": [],
             "FrictOffset": []
         }
+        # Чистый прогон: старые папки контактов от предыдущих запусков удаляем,
+        # иначе в дереве оказываются две «Bonded» и три «Frictional».
+        self._purge_old_groups()
 
         settings = self.context.configs.get("contact_settings") or {}
         inner = settings.get("contact_settings") or {}
@@ -144,6 +147,25 @@ class ContactManager:
                 else:
                     self.log.warning(u"Для контакта '{0}' нет правила и нет default.".format(contact.Name))
                 self._categorize_contact(contact)
+
+    def _purge_old_groups(self):
+        """Удаляет папки контактов, созданные прошлыми прогонами конвейера."""
+        names = tuple(self.groups_to_collect.keys())
+        try:
+            children = list(self.model.Connections.Children)
+        except Exception as exc:
+            self.log.debug(u"Connections.Children недоступны: {0}".format(exc))
+            return
+        for item in children:
+            try:
+                if item.DataModelObjectCategory.ToString() != "ConnectionGroup":
+                    continue
+                if (getattr(item, "Name", u"") or u"") not in names:
+                    continue
+                item.Delete()
+                self.log.info(u"Удалена старая папка контактов '{0}'".format(item.Name))
+            except Exception as exc:
+                self.log.debug(u"Не удалось удалить папку контактов: {0}".format(exc))
 
     def _resolve_rule(self, contact, base_pairs, base_default, support_rules):
         """Правило для контакта: тип опоры -> глобальные пары -> default.
