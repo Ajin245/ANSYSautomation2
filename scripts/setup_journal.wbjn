@@ -3,16 +3,27 @@
 
 Запуск (окно Workbench остаётся открытым, Mechanical показывает настроенную модель):
 
-    runwb2 -F "<копия>.wbpj" -R "C:\\Work\\ansys-automation\\scripts\\setup_journal.wbjn"
+    runwb2 -I -F "<копия>.wbpj" -R "C:\\Work\\ansys-automation\\scripts\\setup_journal.wbjn"
+
+``-I`` обязателен: без него Workbench закрывается по окончании журнала, и модель
+посмотреть уже нечем.
 
 Что делает: один ``SendCommand`` в Mechanical выполняет
 ``src/Mechanical/ansys_automation.py`` — контакты, сетка, ГУ/нагрузки, валидация,
 объекты результатов. Расчёт **не запускается**: решение живёт в отдельном
 ``solve_and_export.py``, и здесь оно не вызывается.
 
-Каждый шаг пишется в ``logs\\setup-mech.txt`` с немедленным закрытием файла:
-упавшее исключение внутри ``SendCommand`` наружу не всплывает, судить можно
-только по этому файлу.
+Две грабли, найденные живым прогоном 2026-11-18:
+
+* ``execfile`` не выставляет ``__file__`` — без явного присваивания скрипт не
+  находит пакет ``Mechanical`` (``ImportError: No module named Mechanical.utils``);
+* в GUI-режиме никто не выставляет ``ANSYS_AUTOMATION_ROOT`` / ``STRUCTURE_ID`` /
+  ``EXECUTION`` / путь к ``.wbpj`` (в batch это делает ``run_ansys.bat``) —
+  выставляем здесь.
+
+Каждый шаг пишется в ``logs\\setup.txt`` и ``logs\\setup-mech.txt`` с немедленным
+закрытием файла: упавшее исключение внутри ``SendCommand`` наружу не всплывает,
+судить можно только по этим файлам.
 """
 SetScriptVersion(Version="21.1.216")
 
@@ -22,6 +33,17 @@ import time
 ROOT = r"C:\Work\ansys-automation"
 OUT = os.path.join(ROOT, "logs", "setup.txt")
 MECH = os.path.join(ROOT, "logs", "setup-mech.txt")
+
+# Окружение конвейера: в GUI-режиме его никто не готовит.
+os.environ["ANSYS_AUTOMATION_ROOT"] = ROOT
+os.environ["STRUCTURE_ID"] = "8946"
+os.environ["EXECUTION"] = "08"
+try:
+    project_file = GetProjectFile()
+except Exception:
+    project_file = None
+if project_file:
+    os.environ["ANSYS_AUTOMATION_PROJECT"] = "%s" % project_file
 
 
 def w(path, text):
@@ -38,6 +60,7 @@ if os.path.exists(MECH):
     os.remove(MECH)
 
 w(OUT, "journal start")
+w(OUT, "project file: %s" % os.environ.get("ANSYS_AUTOMATION_PROJECT"))
 system1 = GetSystem(Name="SYS")
 model1 = system1.GetContainer(ComponentName="Model")
 w(OUT, "model container ok")
@@ -64,6 +87,9 @@ w("env ROOT=%r PROJ=%r STRUCTURE=%r EXEC=%r" % (
     os.environ.get("STRUCTURE_ID"),
     os.environ.get("EXECUTION")))
 
+# execfile не выставляет __file__: без этой строки ломается поиск пакета Mechanical.
+__file__ = r"C:\\Work\\ansys-automation\\src\\Mechanical\\ansys_automation.py"
+
 try:
     execfile(r"C:\\Work\\ansys-automation\\src\\Mechanical\\ansys_automation.py")
     w("setup OK")
@@ -71,15 +97,23 @@ except:
     w("setup FAILED:\\n" + traceback.format_exc())
 
 try:
-    w("contacts=%r" % Model.Connections.Children.Count)
+    w("connections=%r" % Model.Connections.Children.Count)
 except:
-    w("contacts probe failed:\\n" + traceback.format_exc())
+    w("connections probe failed:\\n" + traceback.format_exc())
 
+mesh = None
 try:
-    stats = Model.Mesh.Statistics
-    w("mesh nodes=%r elements=%r" % (stats.Nodes, stats.Elements))
+    mesh = Model.Mesh
 except:
     w("mesh probe failed:\\n" + traceback.format_exc())
+
+if mesh is not None:
+    for attr in ("Statistics", "Nodes", "Elements"):
+        try:
+            value = getattr(mesh, attr)
+        except:
+            continue
+        w("mesh %s=%r" % (attr, value))
 
 try:
     solution = Model.Analyses[0].Solution
