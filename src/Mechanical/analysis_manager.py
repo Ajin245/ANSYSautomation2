@@ -261,7 +261,8 @@ class AnalysisManager:
             "standard_sequence", {}) or {}
         ramp_factor = scenario.get("ramp_factor")
         return execution_parser.build_load_steps(
-            cases, ramp_factor, tightening=self.bolt_manager.has_bolt_bodies())
+            cases, ramp_factor,
+            tightening=self.bolt_manager.will_create_pretensions())
 
     def _apply_loads(self):
         """Применяет силы (и моменты, если они есть в конфиге) по шагам.

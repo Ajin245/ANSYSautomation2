@@ -96,27 +96,36 @@ class ValidatorsTestCase(unittest.TestCase):
     def test_validate_mesh_settings_empty(self):
         self.assertRaises(ValueError, validators.validate_mesh_settings, {})
 
-    def test_validate_contact_settings_v2_config(self):
+    def test_validate_contact_settings_pairs_config(self):
         self.assertTrue(validators.validate_contact_settings(
             _load_config('mechanical_configs', 'contact_settings.json')))
 
-    def test_validate_contact_settings_requires_grouping(self):
-        config = {'contact_settings': {'default': {'type': 'Bonded', 'patterns': ['*']}}}
+    def test_validate_contact_settings_requires_default(self):
+        config = {'contact_settings': {'pairs': [{'name': 'a', 'a': ['mbolt'], 'b': ['mgaika'],
+                                              'type': 'Bonded'}]}}
         self.assertRaises(ValueError, validators.validate_contact_settings, config)
 
     def test_validate_contact_settings_rule_missing_type(self):
-        config = {'contact_settings': {'default': {'patterns': ['*']}},
-                  'grouping': {'Others': ['default']}}
+        config = {'contact_settings': {'pairs': [{'name': 'a', 'a': ['mbolt'], 'b': ['mgaika']}],
+                                       'default': {'type': 'Frictional'}}}
         self.assertRaises(ValueError, validators.validate_contact_settings, config)
 
-    def test_validate_contact_settings_empty_patterns(self):
-        config = {'contact_settings': {'default': {'type': 'Bonded', 'patterns': []}},
-                  'grouping': {'Others': ['default']}}
+    def test_validate_contact_settings_unknown_type(self):
+        config = {'contact_settings': {'pairs': [{'name': 'a', 'a': ['mbolt'], 'b': ['mgaika'],
+                                                   'type': 'Slippery'}],
+                                       'default': {'type': 'Frictional'}}}
         self.assertRaises(ValueError, validators.validate_contact_settings, config)
 
-    def test_validate_contact_settings_grouping_unknown_rule(self):
+    def test_validate_contact_settings_pair_without_sides(self):
+        config = {'contact_settings': {'pairs': [{'name': 'a', 'type': 'Bonded'}],
+                                       'default': {'type': 'Frictional'}}}
+        self.assertRaises(ValueError, validators.validate_contact_settings, config)
+
+    def test_validate_contact_settings_old_v2_schema_rejected(self):
+        # Схема «rules + grouping» заменена парами: старый файл не должен
+        # проходить валидацию, иначе правила молча не применятся.
         config = {'contact_settings': {'default': {'type': 'Bonded', 'patterns': ['*']}},
-                  'grouping': {'Others': ['missing_rule']}}
+                  'grouping': {'Others': ['default']}}
         self.assertRaises(ValueError, validators.validate_contact_settings, config)
 
     def test_validate_contact_settings_old_v1_schema_rejected(self):

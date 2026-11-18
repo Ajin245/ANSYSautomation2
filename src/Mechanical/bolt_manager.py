@@ -48,6 +48,10 @@ class BoltManager(object):
         self.log = context.log
         self.analysis = context.analysis
         self.model = context.model
+        # Сколько объектов BoltPretension реально создано. Именно это, а не
+        # наличие тел mbolt*, решает, нужен ли шаг затяжки: если преднатяг не
+        # поставлен, отдельного шага с нулевыми нагрузками быть не должно.
+        self.created_pretensions = 0
 
     def setup_bolt_pretensions(self):
         """Настраивает преднатяг болтов, если в модели есть тела ``mbolt*``."""
@@ -89,7 +93,33 @@ class BoltManager(object):
                 diameter, preload_n, source, len(bolt_bodies), len(ns_objects)))
 
         for ns_obj in ns_objects:
-            self._create_bolt_pretension(ns_obj, preload_n, diameter)
+            created = self._create_bolt_pretension(ns_obj, preload_n, diameter)
+            if created is not None:
+                self.created_pretensions += 1
+        self.log.info(u"Объектов преднатяга создано: {0}".format(self.created_pretensions))
+        return self.created_pretensions
+
+    def will_create_pretensions(self):
+        """Будут ли созданы объекты преднатяга (без их создания).
+
+        Нужен до расчёта числа шагов: шаг затяжки добавляется только тогда,
+        когда преднатяг действительно появится. Проверка повторяет условия
+        ``setup_bolt_pretensions``, но ничего не меняет в модели.
+        """
+        if not self.analysis:
+            return False
+        bolt_bodies = self._bolt_bodies()
+        if not bolt_bodies:
+            return False
+        ns_objects = [ns for ns in self._named_selections() if self._is_bolt_ns(ns)]
+        if not ns_objects:
+            return False
+        diameters = sorted(set(diameter for _name, diameter in bolt_bodies))
+        if len(diameters) > 1:
+            return False
+        config = self.context.configs.get("bolt_pretension", {}) or {}
+        preload_n, _source = pretension.select_pretension(config, diameters[0])
+        return preload_n is not None
 
     def has_bolt_bodies(self):
         """True, если в геометрии есть тела ``mbolt*`` (нужен шаг затяжки)."""
@@ -134,15 +164,21 @@ class BoltManager(object):
         return int(digits)
 
     def _create_bolt_pretension(self, ns_obj, preload_n, diameter):
-        """Создаёт объект Bolt Pretension с преднатягом ``preload_n`` (Н)."""
+        """Создаёт объект Bolt Pretension с преднатягом ``preload_n`` (Н).
+
+        Returns:
+            object: созданный объект или ``None``, если создать не удалось.
+            По результату вызывающий считает ``created_pretensions`` — от него
+            зависит, будет ли в модели отдельный шаг затяжки.
+        """
         bolt_load_define_by = self._bolt_load_define_by()
         if bolt_load_define_by is None:
-            return
+            return None
 
         Quantity = self.context.Quantity
         if not Quantity:
             self.log.error(u"Класс Quantity не доступен в контексте ProjectContext.")
-            return
+            return None
 
         try:
             bolt_item = self.analysis.AddBoltPretension()
@@ -157,9 +193,11 @@ class BoltManager(object):
             self.log.debug(
                 u"Настроен болт {0}: диаметр {1} мм -> преднатяг {2} Н".format(
                     getattr(ns_obj, "Name", u"?"), diameter, preload_n))
+            return bolt_item
         except Exception as exc:
             self.log.warning(u"Ошибка при создании преднатяга для '{0}': {1}".format(
                 getattr(ns_obj, "Name", u"?"), exc))
+            return None
 
     def _bolt_load_define_by(self):
         """Перечисление ``BoltLoadDefineBy`` из контекста или из Ansys Enums."""

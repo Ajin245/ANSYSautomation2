@@ -1,49 +1,28 @@
 # -*- coding: utf-8 -*-
 
-# Болт и гайка — жёсткая пара: всегда Bonded, без исключений. Правило не
-# переопределяется ни типом опоры (``support_types``), ни ``contact_settings``,
-# ни правилом по умолчанию: резьбовое соединение не может считаться скользящим.
-# Причина появления правила: при заданном ``support_type`` ветка общих правил
-# ``contact_settings`` не вызывалась вовсе, и пара болт—гайка уходила в ``default``
-# типа опоры (``Frictional``).
-BOLT_NUT_CLASSES = (u"mbolt", u"mgaika")
-BOLT_NUT_RULE = {
-    "type": "Bonded",
-    "interface_treatment": "AdjustToTouch",
-}
+# Правила контактов живут в конфиге, а не в коде: сначала глобальные пары
+# классов тел (``contact_settings.pairs``), затем переопределение типа опоры
+# (``support_types[<тип>].pairs``), затем ``default``. Правила с двумя
+# заданными сторонами проверяются раньше правил со звёздочкой.
 
 
-def body_class(side):
+def body_class(side, classes):
     """Класс тела из стороны контакта: ``'SYS\\mbolt8 1'`` -> ``'mbolt'``.
 
     Args:
         side (str): имя тела (одна сторона контакта), регистр не важен.
+        classes (iterable): классы тел, которые надо распознать.
 
     Returns:
-        str: ``'mbolt'``, ``'mgaika'`` или ``None``, если класс другой.
+        str: первый совпавший класс или ``None``.
     """
     if not side:
         return None
     tail = side.replace(u"/", u"\\").split(u"\\")[-1].strip().lower()
-    for class_name in BOLT_NUT_CLASSES:
+    for class_name in classes:
         if tail.startswith(class_name):
             return class_name
     return None
-
-
-def is_bolt_nut_pair(left, right):
-    """Пара «болт—гайка»: одна сторона ``mbolt*``, другая ``mgaika*``.
-
-    Порядок сторон не важен; пара двух болтов или двух гаек парой не считается.
-
-    Args:
-        left (str): первая сторона контакта.
-        right (str): вторая сторона контакта.
-
-    Returns:
-        bool: True, если это контакт болта с гайкой.
-    """
-    return set([body_class(left), body_class(right)]) == set(BOLT_NUT_CLASSES)
 
 
 class ContactManager:
@@ -79,13 +58,18 @@ class ContactManager:
             "FrictOffset": []
         }
 
-        settings = self.context.configs.get("contact_settings")
+        settings = self.context.configs.get("contact_settings") or {}
+        inner = settings.get("contact_settings") or {}
+        base_pairs = inner.get("pairs") or []
+        base_default = inner.get("default") or {}
         support_rules = self._support_type_rules()
-        if not settings and not support_rules:
-            self.log.warning(u"Настройки контактов не найдены (ни contact_settings, ни support_types).")
+        if not base_pairs and not support_rules:
+            self.log.warning(u"Настройки контактов не найдены (ни contact_settings.pairs, ни support_types).")
             return
         if support_rules:
-            self.log.info(u"Правила контактов из типа опоры '{0}'.".format(support_rules.get("name")))
+            self.log.info(u"Переопределения контактов из типа опоры '{0}'.".format(support_rules.get("name")))
+        self.log.info(u"Глобальных правил пар: {0}, тип опоры: {1}".format(
+            len(base_pairs), (support_rules or {}).get("name") or u"нет"))
 
         # Получаем все контактные группы
         try:
@@ -141,7 +125,8 @@ class ContactManager:
         Обрабатывает отдельную группу контактов.
         """
         contacts = group.Children
-        contact_rules = (settings or {}).get("contact_settings", {})
+        base_pairs = ((settings or {}).get("contact_settings") or {}).get("pairs") or []
+        base_default = ((settings or {}).get("contact_settings") or {}).get("default") or {}
 
         for contact in contacts:
             if contact.DataModelObjectCategory.ToString() == "ContactRegion":
@@ -150,29 +135,60 @@ class ContactManager:
                     contact.RenameBasedOnDefinition()
                 except:
                     pass
-                # Болт—гайка проверяем до любых правил: пара Bonded безусловно.
-                if self._is_bolt_nut_contact(contact):
-                    self.log.info(u"Контакт '{0}': болт-гайка -> Bonded (жёсткое правило)".format(
-                        contact.Name))
-                    self._configure_contact(contact, dict(BOLT_NUT_RULE))
-                elif support_rules:
-                    self._apply_support_rules(contact, support_rules)
+                rule, source = self._resolve_rule(contact, base_pairs, base_default, support_rules)
+                if rule:
+                    self.log.info(u"Контакт '{0}': {1} -> {2} ({3})".format(
+                        contact.Name, source, rule.get("type"),
+                        rule.get("interface_treatment") or u"-"))
+                    self._configure_contact(contact, rule)
                 else:
-                    self._apply_rules_to_contact(contact, contact_rules)
+                    self.log.warning(u"Для контакта '{0}' нет правила и нет default.".format(contact.Name))
                 self._categorize_contact(contact)
 
-    def _is_bolt_nut_contact(self, contact):
-        """True, если контакт соединяет тело болта с телом гайки.
+    def _resolve_rule(self, contact, base_pairs, base_default, support_rules):
+        """Правило для контакта: тип опоры -> глобальные пары -> default.
 
-        Стороны берутся из имени контакта; если имя разобрать не удалось
-        (переименование не сработало), проверяются классы прямо в имени —
-        правило не должно зависеть от форматирования.
+        Порядок важен: специфические переопределения типа опоры (например,
+        «ребро всегда Bonded у скользящей направляющей») должны побеждать
+        общие пары, а общий ``default`` — срабатывать последним.
+
+        Returns:
+            tuple: ``(rule, source)`` или ``(None, None)``; ``source`` — откуда
+            правило взялось (для лога и разбора).
         """
         left, right = self._split_pair(contact.Name)
-        if left and right:
-            return is_bolt_nut_pair(left, right)
-        name = (contact.Name or u"").lower()
-        return all(class_name in name for class_name in BOLT_NUT_CLASSES)
+
+        if support_rules:
+            rule = self._match_pairs(left, right, support_rules.get("pairs") or [])
+            if rule:
+                return rule, u"тип опоры '{0}'".format(support_rules.get("name"))
+
+        rule = self._match_pairs(left, right, base_pairs)
+        if rule:
+            return rule, u"глобальная пара '{0}'".format(rule.get("name") or u"?")
+
+        support_default = dict((support_rules or {}).get("default") or {})
+        if support_default:
+            if (support_rules or {}).get("friction_coefficient") is not None \
+                    and support_default.get("friction_coefficient") is None:
+                support_default["friction_coefficient"] = support_rules["friction_coefficient"]
+            return support_default, u"default типа опоры"
+
+        if base_default:
+            return dict(base_default), u"глобальный default"
+
+        return None, None
+
+    def _match_pairs(self, left, right, pairs):
+        """Первое подходящее правило из списка пар; специфичные — раньше общих."""
+        if left is None or right is None:
+            return None
+        ordered = sorted(pairs, key=lambda rule: (
+            0 if (rule.get("a") and rule.get("b") and rule.get("b") != ["*"]) else 1))
+        for rule in ordered:
+            if self._pair_matches(left, right, rule):
+                return dict(rule)
+        return None
 
     @staticmethod
     def _split_pair(name):
@@ -204,34 +220,6 @@ class ContactManager:
         if self._side_matches(left, a) and self._side_matches(right, b):
             return True
         return self._side_matches(right, a) and self._side_matches(left, b)
-
-    def _apply_support_rules(self, contact, support_rules):
-        """Применяет матрицу пар типа опоры; иначе — правило по умолчанию."""
-        left, right = self._split_pair(contact.Name)
-        pairs = support_rules.get("pairs") or []
-
-        # Специфичные пары (обе стороны заданы) проверяем раньше общих ("rebro" - "*").
-        ordered = sorted(pairs, key=lambda rule: (
-            0 if (rule.get("a") and rule.get("b") and rule.get("b") != ["*"]) else 1))
-
-        for rule in ordered:
-            if left is None or right is None:
-                break
-            if self._pair_matches(left, right, rule):
-                self.log.info(u"Контакт '{0}': пара из типа опоры '{1}' -> {2}".format(
-                    contact.Name, support_rules.get("name"), rule.get("type")))
-                self._configure_contact(contact, rule)
-                return
-
-        default_rule = dict(support_rules.get("default") or {})
-        if support_rules.get("friction_coefficient") is not None and default_rule.get("friction_coefficient") is None:
-            default_rule["friction_coefficient"] = support_rules["friction_coefficient"]
-        if default_rule:
-            self.log.info(u"Контакт '{0}': правило по умолчанию типа опоры -> {1}".format(
-                contact.Name, default_rule.get("type")))
-            self._configure_contact(contact, default_rule)
-        else:
-            self.log.warning(u"Для контакта '{0}' нет правила и нет default.".format(contact.Name))
 
     def _get_rule_priority(self, rule_params):
         """

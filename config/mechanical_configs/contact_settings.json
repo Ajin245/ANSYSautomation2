@@ -1,37 +1,103 @@
 {
+  "_comment": "Глобальные правила контактов: пары классов тел. Переопределяются support_types[<тип>].pairs, затем default типа опоры и этот default. Правило с двумя заданными сторонами проверяется раньше правила со '*'.",
   "contact_settings": {
-    "shov": {
-      "type": "Bonded",
-      "patterns": ["shov"],
-      "interface_treatment": "AdjustToTouch"
-    },
-    "truba_shponka": {
-      "type": "Bonded",
-      "patterns": ["truba", "shponka"],
-      "interface_treatment": "AdjustToTouch"
-    },
-    "mgaika_mbolt": {
-      "type": "Bonded",
-      "patterns": ["mgaika", "mbolt"],
-      "interface_treatment": "AdjustToTouch"
-    },
-    "mbolt_offset": {
+    "pairs": [
+      {
+        "name": "bolt_nut",
+        "a": [
+          "mbolt"
+        ],
+        "b": [
+          "mgaika"
+        ],
+        "type": "Bonded",
+        "interface_treatment": "AdjustToTouch"
+      },
+      {
+        "name": "bolt_washer",
+        "a": [
+          "mbolt"
+        ],
+        "b": [
+          "shaiba"
+        ],
+        "type": "Frictional",
+        "friction_coefficient": 0.3,
+        "interface_treatment": "AddOffsetNoRamping"
+      },
+      {
+        "name": "bolt_support",
+        "a": [
+          "mbolt"
+        ],
+        "b": [
+          "opora"
+        ],
+        "type": "Frictional",
+        "friction_coefficient": 0.3,
+        "interface_treatment": "AddOffsetNoRamping"
+      },
+      {
+        "name": "truba_shponka",
+        "a": [
+          "truba"
+        ],
+        "b": [
+          "shponka"
+        ],
+        "type": "Bonded",
+        "interface_treatment": "AdjustToTouch"
+      },
+      {
+        "name": "truba_opora_verh",
+        "a": [
+          "truba"
+        ],
+        "b": [
+          "opora_verh"
+        ],
+        "type": "Frictional",
+        "friction_coefficient": 0.3,
+        "interface_treatment": "AdjustToTouch"
+      },
+      {
+        "name": "opora_niz_osnovanie",
+        "a": [
+          "opora_niz"
+        ],
+        "b": [
+          "osnovanie"
+        ],
+        "type": "Bonded",
+        "interface_treatment": "AdjustToTouch"
+      },
+      {
+        "name": "seam",
+        "a": [
+          "shov"
+        ],
+        "b": [
+          "*"
+        ],
+        "type": "Bonded",
+        "interface_treatment": "AdjustToTouch"
+      },
+      {
+        "name": "rebro",
+        "a": [
+          "rebro"
+        ],
+        "b": [
+          "*"
+        ],
+        "type": "Bonded",
+        "interface_treatment": "AdjustToTouch"
+      }
+    ],
+    "default": {
       "type": "Frictional",
-      "patterns": ["mbolt"],
-      "exclude_patterns": ["mgaika"],
-      "friction_coefficient": 0.3,
-      "interface_treatment": "AddOffsetNoRamping"
-    },
-    "default_frictional": {
-      "type": "Frictional",
-      "patterns": ["*"],
       "friction_coefficient": 0.3,
       "interface_treatment": "AdjustToTouch"
     }
-  },
-  "grouping": {
-    "Bonded": ["shov", "truba_shponka", "mgaika_mbolt"],
-    "Offset": ["mbolt_offset"],
-    "Others": ["default_frictional"]
   }
 }

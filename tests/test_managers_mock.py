@@ -24,10 +24,11 @@ if SRC not in sys.path:
 
 from Mechanical.analysis_manager import AnalysisManager, parse_remote_displacement
 from Mechanical.bolt_manager import BoltManager
-from Mechanical.contact_manager import ContactManager, is_bolt_nut_pair
+from Mechanical.contact_manager import ContactManager
 from Mechanical.mesh_manager import MeshManager
 from Mechanical.result_manager import (ResultManager, RESULTS_PATH_ENV,
-                                         resolve_export_path)
+                                         resolve_export_path, stress_kind_for,
+                                         result_object_name)
 
 
 class FakeLog(object):
@@ -167,6 +168,16 @@ class FakeSolution(object):
         self.created.append(result)
         return result
 
+    def AddMaximumShearStress(self):
+        result = FakeResult()
+        self.created.append(result)
+        return result
+
+    def AddStressIntensity(self):
+        result = FakeResult()
+        self.created.append(result)
+        return result
+
 
 class FakeNamedSelection(object):
     def __init__(self, name):
@@ -213,6 +224,10 @@ class FakeMesh(object):
         self.Elements = 0
         self.generated = 0
         self.elements_after_generate = 4242
+        self.group_all_calls = 0
+
+    def GroupAllSimilarChildren(self):
+        self.group_all_calls += 1
 
     def GenerateMesh(self):
         self.generated += 1
@@ -761,13 +776,18 @@ class ContactManagerTestCase(unittest.TestCase):
 
     CONTACT_SETTINGS = {
         "contact_settings": {
-            "shov": {"type": "Bonded", "patterns": ["shov"],
-                     "interface_treatment": "AdjustToTouch"},
-            "mbolt_offset": {"type": "Frictional", "patterns": ["mbolt"],
-                             "interface_treatment": "AddOffsetNoRamping"},
-            "default_frictional": {"type": "Frictional", "patterns": ["*"],
-                                   "friction_coefficient": 0.3,
-                                   "interface_treatment": "AdjustToTouch"},
+        "pairs": [
+            {"name": "bolt_nut", "a": ["mbolt"], "b": ["mgaika"], "type": "Bonded",
+             "interface_treatment": "AdjustToTouch"},
+            {"name": "bolt_washer", "a": ["mbolt"], "b": ["shaiba"], "type": "Frictional",
+             "friction_coefficient": 0.3, "interface_treatment": "AddOffsetNoRamping"},
+            {"name": "bolt_support", "a": ["mbolt"], "b": ["opora"], "type": "Frictional",
+             "friction_coefficient": 0.3, "interface_treatment": "AddOffsetNoRamping"},
+            {"name": "seam", "a": ["shov"], "b": ["*"], "type": "Bonded",
+             "interface_treatment": "AdjustToTouch"},
+        ],
+        "default": {"type": "Frictional", "friction_coefficient": 0.3,
+                    "interface_treatment": "AdjustToTouch"},
         },
     }
 
@@ -780,7 +800,7 @@ class ContactManagerTestCase(unittest.TestCase):
         self.assertEqual([contact.rename_calls for contact in contacts], [1, 1])
 
     def test_groups_contacts_by_type(self):
-        bonded = FakeContact("shov_truba")
+        bonded = FakeContact("Bonded - shov12 1 To truba42 3")
         offset = FakeContact("Bonded - mbolt8 1 To SYS\\opora3 1")
         context = FakeContext(contacts=[bonded, offset],
                               contact_settings=self.CONTACT_SETTINGS)
@@ -837,7 +857,7 @@ class ContactManagerTestCase(unittest.TestCase):
         self.assertEqual(contact.FrictionCoefficient, 0.3)
 
     def test_bonded_rule_sets_contact_type(self):
-        contact = FakeContact("shov_truba")
+        contact = FakeContact("Bonded - shov12 1 To truba42 3")
         context = FakeContext(contacts=[contact], contact_settings=self.CONTACT_SETTINGS)
 
         ContactManager(context).setup_contacts()
@@ -845,16 +865,17 @@ class ContactManagerTestCase(unittest.TestCase):
         self.assertEqual(contact.ContactType, FakeContactType.Bonded)
         self.assertEqual(contact.InterfaceTreatment, FakeInterfaceTreatment.AdjustToTouch)
 
-    # Болт—гайка: всегда Bonded, независимо от типа опоры, общего правила и имени.
+    # Болт—гайка Bonded теперь живёт в глобальных правилах пар (не в коде),
+    # а специфические пары типа опоры его переопределяют.
     def _sliding_contact(self, name):
         contact = FakeContact(name)
         contact.ContactType = FakeContactType.Frictional
         contact.InterfaceTreatment = FakeInterfaceTreatment.AddOffsetNoRamping
         return contact
 
-    def test_bolt_nut_is_bonded_despite_support_default_frictional(self):
+    def test_bolt_nut_is_bonded_from_global_pair(self):
         contact = self._sliding_contact("Frictional - mbolt8 1 To mgaika8 1")
-        context = FakeContext(contacts=[contact], structure_extra=self.SUPPORT_RULES)
+        context = FakeContext(contacts=[contact], contact_settings=self.CONTACT_SETTINGS)
 
         ContactManager(context).setup_contacts()
 
@@ -866,44 +887,78 @@ class ContactManagerTestCase(unittest.TestCase):
 
     def test_bolt_nut_is_bonded_with_reversed_sides_and_folder_path(self):
         contact = self._sliding_contact("Bonded - SYS\\mgaika8 1 To mbolt8 1")
-        context = FakeContext(contacts=[contact], structure_extra=self.SUPPORT_RULES)
-
-        ContactManager(context).setup_contacts()
-
-        self.assertEqual(contact.ContactType, FakeContactType.Bonded)
-
-    def test_bolt_nut_is_bonded_when_contact_settings_has_no_such_rule(self):
-        contact = self._sliding_contact("Bonded - mbolt8 1 To mgaika8 1")
         context = FakeContext(contacts=[contact], contact_settings=self.CONTACT_SETTINGS)
 
         ContactManager(context).setup_contacts()
 
         self.assertEqual(contact.ContactType, FakeContactType.Bonded)
 
-    def test_bolt_nut_is_bonded_when_name_cannot_be_split(self):
-        contact = self._sliding_contact("mbolt_mgaika")
-        context = FakeContext(contacts=[contact], structure_extra=self.SUPPORT_RULES)
+    def test_bolt_nut_pair_wins_over_support_default(self):
+        contact = self._sliding_contact("Bonded - mbolt8 1 To mgaika8 1")
+        context = FakeContext(contacts=[contact], structure_extra=self.SUPPORT_RULES,
+                              contact_settings=self.CONTACT_SETTINGS)
 
         ContactManager(context).setup_contacts()
 
         self.assertEqual(contact.ContactType, FakeContactType.Bonded)
 
-    def test_bolt_to_support_is_not_forced_bonded(self):
-        contact = self._sliding_contact("Bonded - mbolt8 1 To SYS\\opora3 1")
-        context = FakeContext(contacts=[contact], structure_extra=self.SUPPORT_RULES)
+    def test_support_pair_overrides_global_pair(self):
+        # Конфиг типа опоры задаёт для пары opora_niz-osnovanie Frictional,
+        # хотя глобальное правило говорит Bonded: побеждает тип опоры.
+        contact = self._sliding_contact("Bonded - opora_niz22 2 To osnovanie 1")
+        override = {
+            "support_type": "sliding_guide",
+            "support_types": {"sliding_guide": {
+                "pairs": [{"name": "opora_niz_osnovanie", "a": ["opora_niz"],
+                           "b": ["osnovanie"], "type": "Frictional",
+                           "friction_coefficient": 0.2,
+                           "interface_treatment": "AddOffsetNoRamping"}],
+                "default": {"type": "Bonded"}}},
+        }
+        context = FakeContext(contacts=[contact], structure_extra=override,
+                              contact_settings=self.CONTACT_SETTINGS)
 
         ContactManager(context).setup_contacts()
 
         self.assertEqual(contact.ContactType, FakeContactType.Frictional)
 
-    def test_bolt_nut_pair_predicate(self):
-        self.assertTrue(is_bolt_nut_pair("mbolt8 1", "mgaika8 1"))
-        self.assertTrue(is_bolt_nut_pair("sys\\mgaika22 2", "mbolt8 1"))
-        self.assertTrue(is_bolt_nut_pair("mgaika8 1", "mbolt8 1"))
-        self.assertFalse(is_bolt_nut_pair("mbolt8 1", "mbolt8 2"))
-        self.assertFalse(is_bolt_nut_pair("mgaika8 1", "mgaika8 2"))
-        self.assertFalse(is_bolt_nut_pair("mbolt8 1", "opora3 1"))
-        self.assertFalse(is_bolt_nut_pair(None, "mgaika8 1"))
+    def test_bolt_to_support_is_not_forced_bonded(self):
+        contact = self._sliding_contact("Bonded - mbolt8 1 To SYS\\opora3 1")
+        context = FakeContext(contacts=[contact], contact_settings=self.CONTACT_SETTINGS)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual(contact.ContactType, FakeContactType.Frictional)
+        self.assertEqual(contact.InterfaceTreatment, FakeInterfaceTreatment.AddOffsetNoRamping)
+
+    def test_bolt_to_washer_is_frictional_add_offset(self):
+        contact = self._sliding_contact("Bonded - mbolt8 1 To shaiba8 2")
+        context = FakeContext(contacts=[contact], contact_settings=self.CONTACT_SETTINGS)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual(contact.ContactType, FakeContactType.Frictional)
+        self.assertEqual(contact.InterfaceTreatment, FakeInterfaceTreatment.AddOffsetNoRamping)
+
+    def test_seam_pair_is_bonded_even_with_support_rules(self):
+        contact = self._sliding_contact("Frictional - shov12 1 To truba42 3")
+        contact_stop = self._sliding_contact("Frictional - shov12 1 To SYS\\opora_niz22 2")
+        context = FakeContext(contacts=[contact, contact_stop],
+                              structure_extra=self.SUPPORT_RULES,
+                              contact_settings=self.CONTACT_SETTINGS)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual(contact.ContactType, FakeContactType.Bonded)
+        self.assertEqual(contact_stop.ContactType, FakeContactType.Bonded)
+
+    def test_unparsed_contact_name_falls_to_default(self):
+        contact = self._sliding_contact("mbolt_mgaika")
+        context = FakeContext(contacts=[contact], contact_settings=self.CONTACT_SETTINGS)
+
+        ContactManager(context).setup_contacts()
+
+        self.assertEqual(contact.ContactType, FakeContactType.Frictional)
 
 
 class MeshManagerTestCase(unittest.TestCase):
@@ -1014,15 +1069,15 @@ class MeshManagerTestCase(unittest.TestCase):
         self.assertEqual(len(context.model.Mesh.sizings), 1)
 
     def test_groups_sizing_and_method_in_tree(self):
+        # Группировку делает сам Mechanical: MeshManager обязан вызвать
+        # GroupAllSimilarChildren() на Model.Mesh, а не собирать Tree.Group вручную.
         context = FakeContext(ns_names=["truba245"], mesh_config=self.MESH_CONFIG,
                               project_settings={"units": {"length": "mm"}})
 
         MeshManager(context).apply_mesh_settings()
 
-        groups = {group.Name: group.Objects
-                  for group in context.ext_api.DataModel.Tree.groups}
-        self.assertEqual(groups["Sizing"], context.model.Mesh.sizings)
-        self.assertEqual(groups["Methods"], context.model.Mesh.methods)
+        self.assertEqual(context.model.Mesh.group_all_calls, 1)
+        self.assertTrue(context.model.Mesh.sizings)
 
 
 class ResultManagerTestCase(unittest.TestCase):
@@ -1034,15 +1089,42 @@ class ResultManagerTestCase(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def test_setup_plot_results_adds_deformation_and_stress(self):
+    def test_setup_plot_results_adds_deformation_over_all_bodies(self):
+        # Total Deformation — один объект на всю модель (решение владельца).
         solution = FakeSolution()
         context = FakeContext(solution=solution)
         ResultManager(context).setup_plot_results()
 
-        self.assertEqual(len(solution.created), 2)
         names = [result.Name for result in solution.created]
-        self.assertIn("Total Deformation", names)
-        self.assertIn("Equivalent Stress", names)
+        self.assertEqual(names, ["TD_all"])
+
+    def test_setup_plot_results_creates_stress_per_body_ns(self):
+        # Напряжения — по одному объекту на NS, кроме gu_*: шов -> Maximum
+        # Shear Stress, остальные -> Stress Intensity.
+        solution = FakeSolution()
+        context = FakeContext(solution=solution,
+                              ns_names=["gu_force", "shov12", "truba42", "rebro3"],
+                              project_settings={"solution_settings": {
+                                  "default_results": ["Total Deformation"],
+                                  "stress_results": {"shov": "Maximum Shear Stress",
+                                                     "default": "Stress Intensity"},
+                                  "stress_averaging": "ElementalMean"}})
+        ResultManager(context).setup_plot_results()
+
+        names = [result.Name for result in solution.created]
+        self.assertEqual(names[0], "TD_all")
+        self.assertIn("MSS_shov12", names)
+        self.assertIn("SI_truba42", names)
+        self.assertIn("SI_rebro3", names)
+        self.assertFalse([name for name in names if "gu_" in name])
+
+    def test_stress_kind_mapping_from_config(self):
+        stress_map = {"shov": "Maximum Shear Stress", "default": "Stress Intensity"}
+        self.assertEqual(stress_kind_for("shov12", stress_map), "Maximum Shear Stress")
+        self.assertEqual(stress_kind_for("truba42", stress_map), "Stress Intensity")
+        self.assertEqual(stress_kind_for("SHOV_1", stress_map), "Maximum Shear Stress")
+        self.assertEqual(result_object_name("Stress Intensity", "truba42"), "SI_truba42")
+        self.assertEqual(result_object_name("Maximum Shear Stress", "shov1"), "MSS_shov1")
 
     def test_export_results_writes_csv_file(self):
         solution = FakeSolution(children=[

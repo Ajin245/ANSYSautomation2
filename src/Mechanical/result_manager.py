@@ -76,6 +76,52 @@ def _field(record, names, default=None):
     return default
 
 
+# Методы создания объектов результатов в Mechanical API (имена по релизам
+# различаются, поэтому пробуем по порядку и громко падаем, если ни одного нет).
+STRESS_RESULT_METHODS = {
+    "Maximum Shear Stress": ("AddMaximumShearStress",),
+    "Stress Intensity": ("AddStressIntensity",),
+    "Equivalent Stress": ("AddEquivalentStress",),
+}
+
+# Вид напряжений -> префикс имени объекта (по нему же работает чистка).
+STRESS_RESULT_PREFIXES = {
+    "Maximum Shear Stress": u"MSS_",
+    "Stress Intensity": u"SI_",
+    "Equivalent Stress": u"SEQV_",
+}
+
+
+def stress_kind_for(ns_name, stress_map):
+    """Вид напряжений для Named Selection.
+
+    Ключи ``stress_results`` — подстроки имени NS (``shov``), служебный ключ
+    ``default`` — для всех остальных. Швы считаются отдельным результатом
+    (Maximum Shear Stress), потому что в них интересен сдвиг, а не Мизес.
+
+    Args:
+        ns_name (str): имя Named Selection.
+        stress_map (dict): ``project_settings.solution_settings.stress_results``.
+
+    Returns:
+        str: имя вида напряжений.
+    """
+    stress_map = stress_map or {}
+    name = (ns_name or u"").lower()
+    for key, kind in stress_map.items():
+        if key == "default":
+            continue
+        if key.lower() in name:
+            return kind
+    return stress_map.get("default") or "Stress Intensity"
+
+
+def result_object_name(kind, ns_name):
+    """Имя объекта результата: префикс по виду напряжений + имя NS."""
+    prefix = STRESS_RESULT_PREFIXES.get(kind, u"RES_")
+    return u"{0}{1}".format(prefix, ns_name)
+
+
 class ResultManager(object):
     """Создаёт объекты результатов и экспортирует их в CSV."""
 
@@ -87,10 +133,24 @@ class ResultManager(object):
         """
         self.context = context
         self.log = context.log
+        self.model = context.model
         self.analysis = context.analysis
 
     def setup_plot_results(self):
-        """Создаёт объекты PlotResults в дереве Mechanical перед расчётом (FR-10)."""
+        """Создаёт объекты результатов по конфигу (FR-10).
+
+        Правила берутся из ``project_settings.solution_settings``:
+
+        - ``default_results`` — объекты на всю модель (Total Deformation);
+        - ``stress_results`` — вид напряжений по NS (``shov`` -> Maximum Shear
+          Stress, ``default`` -> Stress Intensity); NS с префиксом ``gu_``
+          пропускаются, это граничные условия, а не тела;
+        - ``stress_averaging`` — ``ElementalMean`` для этих результатов.
+
+        Before: ``AddTotalDeformation()``/``AddEquivalentStress()`` без области
+        охвата, а ``Solution`` не чистился — отсюда дубли по всем телам после
+        каждого прогона.
+        """
         self.log.info(u"Настройка объектов PlotResults...")
 
         if not self.analysis:
@@ -99,18 +159,93 @@ class ResultManager(object):
 
         try:
             solution = self.analysis.Solution
+        except Exception as exc:
+            self.log.error(u"Solution недоступен: {0}".format(exc))
+            return
 
-            # 1. Общие перемещения (Total Deformation)
-            total_def = solution.AddTotalDeformation()
-            total_def.Name = u"Total Deformation"
+        # Дубли копятся между прогонами: чистим результаты конвейера.
+        try:
+            from Mechanical import utils as mei_utils
+            removed = mei_utils.purge_automatic_objects(solution, self.log)
+            if removed:
+                self.log.info(u"Удалено объектов результатов прошлого прогона: {0}".format(removed))
+        except Exception as exc:
+            self.log.warning(u"Не удалось очистить Solution: {0}".format(exc))
 
-            # 2. Напряжения (Equivalent Von-Mises Stress)
-            equiv_stress = solution.AddEquivalentStress()
-            equiv_stress.Name = u"Equivalent Stress"
+        settings = (self.context.configs.get("project_settings") or {}).get(
+            "solution_settings") or {}
+        averaging = settings.get("stress_averaging") or u"ElementalMean"
 
-            self.log.info(u"Объекты PlotResults успешно созданы.")
-        except Exception as e:
-            self.log.error(u"Ошибка при создании PlotResults: {0}".format(e))
+        # 1. Объекты на всю модель (по умолчанию — Total Deformation).
+        for result_name in settings.get("default_results") or [u"Total Deformation"]:
+            if result_name == u"Total Deformation":
+                try:
+                    obj = solution.AddTotalDeformation()
+                    obj.Name = u"TD_all"
+                    self.log.info(u"Результат '{0}' создан на всю модель.".format(obj.Name))
+                except Exception as exc:
+                    self.log.error(u"Total Deformation не создан: {0}".format(exc))
+            else:
+                self.log.warning(u"Результат '{0}' из default_results не поддержан.".format(result_name))
+
+        # 2. Напряжения по Named Selection (кроме gu_*).
+        stress_map = settings.get("stress_results") or {}
+        for ns in self._result_named_selections():
+            kind = stress_kind_for(ns.Name, stress_map)
+            self._add_stress_result(solution, kind, ns, averaging)
+
+    def _result_named_selections(self):
+        """Named Selections для результатов: всё, кроме ``gu_*``."""
+        selections = []
+        try:
+            for ns in self.model.NamedSelections.Children:
+                name = getattr(ns, "Name", u"") or u""
+                if name.lower().startswith(u"gu_"):
+                    continue
+                selections.append(ns)
+        except Exception as exc:
+            self.log.warning(u"Named Selections недоступны: {0}".format(exc))
+        return selections
+
+    def _add_stress_result(self, solution, kind, ns, averaging):
+        """Создаёт объект напряжений нужного вида, привязанный к NS."""
+        methods = STRESS_RESULT_METHODS.get(kind, ())
+        for method_name in methods:
+            factory = getattr(solution, method_name, None)
+            if factory is None:
+                continue
+            try:
+                obj = factory()
+                obj.Name = result_object_name(kind, ns.Name)
+                try:
+                    obj.Location = ns
+                except Exception as exc:
+                    self.log.warning(u"Location для '{0}' не задан: {1}".format(obj.Name, exc))
+                self._set_averaged(obj, averaging)
+                self.log.info(u"Результат '{0}': {1} по NS '{2}', усреднение {3}".format(
+                    obj.Name, kind, ns.Name, averaging))
+                return obj
+            except Exception as exc:
+                self.log.warning(u"{0} не создан для '{1}': {2}".format(method_name, ns.Name, exc))
+        self.log.error(u"Ни один метод для '{0}' не доступен в этой сборке (NS '{1}').".format(
+            kind, ns.Name))
+        return None
+
+    def _set_averaged(self, obj, value):
+        """Пробует выставить ``Averaged = ElementalMean`` (имя перечисления по релизам)."""
+        if not value:
+            return
+        try:
+            current = obj.Averaged
+            target = getattr(current, value, None)
+            if target is None:
+                self.log.warning(u"Перечисление Averaged.{0} недоступно у '{1}'".format(
+                    value, getattr(obj, "Name", u"?")))
+                return
+            obj.Averaged = target
+        except Exception as exc:
+            self.log.warning(u"Averaged не выставлен у '{0}': {1}".format(
+                getattr(obj, "Name", u"?"), exc))
 
     def export_results(self, export_path=None):
         """Собирает результаты и пишет CSV (FR-11).

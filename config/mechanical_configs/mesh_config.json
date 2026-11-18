@@ -64,7 +64,8 @@
       "meshCoef": 1.0,
       "meshMethod": "Sweep",
       "elementOrder": "ProgramControlled",
-      "meshAlgorithm": "ProgramControlled"
+      "meshAlgorithm": "ProgramControlled",
+      "behavior": "Hard"
     },
     "shov_truba": {
       "meshCoef": 1.0,

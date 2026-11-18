@@ -124,12 +124,12 @@ def validate_mesh_settings(mesh_settings):
 
 
 def validate_contact_settings(contact_settings):
-    """Проверяет контакты по схеме v2: ``contact_settings`` + ``grouping``.
+    """Проверяет контакты по схеме пар: ``pairs`` + ``default``.
 
-    Каждое правило обязано иметь ``type`` и непустой список ``patterns``.
-    ``grouping`` — словарь «группа -> список имён правил»; имена обязаны
-    ссылаться на существующие правила, иначе группировка контактов в ANSYS
-    молча потеряет правило.
+    Схема выросла из «правил по подстрокам имени»: пара описывается сторонами
+    ``a``/``b`` (классы тел), поэтому одна и та же пара болт—гайка не может
+    случайно совпасть с болт—опора. У каждой пары обязательны ``type`` и хотя
+    бы одна сторона; ``default`` обязателен и должен быть словарём правила.
 
     Args:
         contact_settings (dict): содержимое ``contact_settings.json``.
@@ -140,36 +140,39 @@ def validate_contact_settings(contact_settings):
     Raises:
         ValueError: если структура или правило неполные.
     """
-    validate_required_keys(contact_settings, ["contact_settings", "grouping"],
+    validate_required_keys(contact_settings, [u"contact_settings"],
                            u" (contact_settings)")
+    inner = contact_settings[u"contact_settings"]
+    if not isinstance(inner, dict):
+        raise ValueError(u"contact_settings должен быть словарём с pairs и default")
+    validate_required_keys(inner, [u"pairs", u"default"], u" (contact_settings)")
 
-    rules = contact_settings["contact_settings"]
-    if not isinstance(rules, dict) or not rules:
-        raise ValueError(u"contact_settings должен быть непустым словарём правил")
+    pairs = inner[u"pairs"]
+    if not isinstance(pairs, list) or not pairs:
+        raise ValueError(u"pairs должен быть непустым списком правил")
 
-    for rule_name, rule in rules.items():
+    known_types = (u"Bonded", u"Frictional", u"Frictionless", u"NoSeparation")
+    for rule in pairs:
         if not isinstance(rule, dict):
-            raise ValueError(u"Правило контакта '{0}' должно быть словарём".format(rule_name))
-        missing = [key for key in REQUIRED_CONTACT_RULE_KEYS if key not in rule]
-        if missing:
-            raise ValueError(u"Правило контакта '{0}' неполное, нет: {1}".format(
-                rule_name, u", ".join(missing)))
-        patterns = rule["patterns"]
-        if not isinstance(patterns, list) or not patterns:
-            raise ValueError(u"Правило контакта '{0}': patterns должен быть непустым списком".format(
-                rule_name))
+            raise ValueError(u"Правило пары должно быть словарём")
+        name = rule.get(u"name") or u"?"
+        if u"type" not in rule:
+            raise ValueError(u"Правило пары '{0}' неполное, нет: type".format(name))
+        if rule[u"type"] not in known_types:
+            raise ValueError(u"Правило пары '{0}': неизвестный type '{1}'".format(
+                name, rule[u"type"]))
+        sides = (rule.get(u"a") or []) + (rule.get(u"b") or [])
+        if not sides:
+            raise ValueError(u"Правило пары '{0}': не задана ни одна сторона".format(name))
+        for key in (u"a", u"b"):
+            value = rule.get(key)
+            if value is not None and (not isinstance(value, list) or not value):
+                raise ValueError(u"Правило пары '{0}': {1} должен быть непустым списком".format(
+                    name, key))
 
-    grouping = contact_settings["grouping"]
-    if not isinstance(grouping, dict) or not grouping:
-        raise ValueError(u"grouping должен быть непустым словарём")
-
-    for group_name, rule_names in grouping.items():
-        if not isinstance(rule_names, list):
-            raise ValueError(u"Группа '{0}' должна быть списком имён правил".format(group_name))
-        unknown = [name for name in rule_names if name not in rules]
-        if unknown:
-            raise ValueError(u"Группа '{0}' ссылается на неизвестные правила: {1}".format(
-                group_name, u", ".join(unknown)))
+    default = inner[u"default"]
+    if not isinstance(default, dict) or u"type" not in default:
+        raise ValueError(u"default должен быть словарём правила с ключом type")
     return True
 
 

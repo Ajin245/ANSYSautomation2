@@ -117,6 +117,12 @@ AUTOMATIC_PREFIXES = (
     u"Sizing_",
     u"Method_",
     u"Auto_",
+    # Результаты конвейера: именуются по виду и NS, чтобы чистка их находила.
+    u"TD_",
+    u"SI_",
+    u"MSS_",
+    u"SEQV_",
+    u"RES_",
 )
 
 

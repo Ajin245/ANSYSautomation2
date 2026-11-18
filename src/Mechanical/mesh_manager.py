@@ -184,6 +184,12 @@ class MeshManager:
                 sizing.Name = u"Sizing_{0}".format(ns_name)
                 sizing.Location = location if location is not None else ns_obj
                 self.sizings_to_collect.append(sizing)
+
+                # Behavior: Hard — размер соблюдается жёстко (швы: иначе
+                # программа сама укрупняет сетку на тонких телах).
+                behavior = params.get("behavior")
+                if behavior:
+                    self._set_sizing_behavior(sizing, behavior)
                 
                 if match:
                     val = float(match.group(1))
@@ -259,24 +265,48 @@ class MeshManager:
         except Exception as e:
             self.log.error(u"Ошибка настройки сетки '{0}': {1}".format(ns_name, str(e)))
 
+    def _set_sizing_behavior(self, sizing, behavior):
+        """Выставляет ``Behavior`` контрола размера (``Hard``/``Soft``).
+
+        В 21R1 свойство принимает значение перечисления ``SizingBehavior``;
+        строковое присваивание работает не во всех сборках, поэтому пробуем
+        оба пути и не роняем настройку из-за косметики.
+        """
+        try:
+            sizing.Behavior = behavior
+            self.log.debug(u"Behavior '{0}' для '{1}'".format(behavior, sizing.Name))
+            return
+        except Exception:
+            pass
+        try:
+            sizing.Behavior = getattr(sizing.Behavior, behavior)
+            self.log.debug(u"Behavior '{0}' для '{1}' (через перечисление)".format(
+                behavior, sizing.Name))
+        except Exception as exc:
+            self.log.warning(u"Behavior '{0}' не выставлен у '{1}': {2}".format(
+                behavior, getattr(sizing, "Name", u"?"), exc))
+
     def _create_tree_groups(self):
         """
         Создает группы в дереве проекта на основе собранных объектов сетки.
         """
-        self.log.info(u"Группировка настроек сетки в дереве...")
-        # Две папки, по образцу контактов: контролы не должны сваливаться в кучу.
-        groups = {
-            "Methods": self.methods_to_collect,
-            "Sizing": self.sizings_to_collect
-        }
-        
-        for group_name, objects in groups.items():
-            if objects:
-                try:
-                    group = self.context.ext_api.DataModel.Tree.Group(objects)
-                    group.Name = group_name
-                except Exception as e:
-                    self.log.error(u"Не удалось создать группу '{0}': {1}".format(group_name, e))
+        # Решение владельца (2026-11-18): папки в дереве делает сам Mechanical
+        # методом GroupAllSimilarChildren() объекта Mesh — контролы одного
+        # категорийного типа складываются в одну папку автоматически, и в
+        # отличие от ручного DataModel.Tree.Group() они остаются в группе и
+        # после переименования/пересоздания.
+        mesh = None
+        try:
+            mesh = self.model.Mesh
+        except Exception as exc:
+            self.log.warning(u"Model.Mesh недоступен для группировки: {0}".format(exc))
+        if mesh is None:
+            return
+        try:
+            mesh.GroupAllSimilarChildren()
+            self.log.info(u"GroupAllSimilarChildren() выполнен для сетки.")
+        except Exception as exc:
+            self.log.error(u"Не удалось сгруппировать настройки сетки: {0}".format(exc))
 
     def _apply_mesh_to_bodies(self, mesh, mesh_rules):
         """Размер на тела, которым не досталось Named Selection.

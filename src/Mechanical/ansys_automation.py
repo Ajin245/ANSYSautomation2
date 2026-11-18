@@ -60,6 +60,12 @@ def run_automation():
         from Mechanical import utils as mei_utils
         removed = mei_utils.purge_automatic_objects(context.analysis, context.log)
         removed += mei_utils.purge_automatic_objects(context.model.Mesh, context.log)
+        # Результаты живут в Solution и чистятся отдельно: иначе Total Deformation
+        # и напряжения копятся от прогона к прогону и дублируются по всем телам.
+        try:
+            removed += mei_utils.purge_automatic_objects(context.analysis.Solution, context.log)
+        except Exception as exc:
+            context.log.warning(u"Solution недоступен для очистки: {0}".format(exc))
         if removed:
             context.log.info(u"Удалено объектов прошлого прогона: {0}".format(removed))
 
