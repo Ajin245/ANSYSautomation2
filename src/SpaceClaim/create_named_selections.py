@@ -1,34 +1,45 @@
 # Python Script, API Version = V19
 # -*- coding: utf-8 -*-
-import re
 import os
-import json
+import sys
 from SpaceClaim.Api.V19 import *
 
-# ===== CONFIGURATION LOADING =====
-def get_project_root():
-    """Dynamically determine project root"""
-    try:
-        path = os.path.dirname(os.path.abspath(__file__))
-        return os.path.abspath(os.path.join(path, "..", ".."))
-    except:
-        return os.getcwd()
+# ===== ID КОНСТРУКЦИИ =====
+# Номер конструкции (например, номер проекта Workbench). None — ID берётся из имени
+# документа (Project_<id>); если и там нет, скрипт остановится с понятной ошибкой.
+# Зашитого дефолта нет: FR-2, PLAN-MERGE §4.6.
+STRUCTURE_ID = None
 
-def load_structure_config(structure_id="8946"):
-    """Load JSON configuration for the structure"""
-    root = get_project_root()
-    config_path = os.path.join(root, "config", "structure_type_{0}.json".format(structure_id))
-    
-    if not os.path.exists(config_path):
-        print("WARNING: Config not found at {0}. Trying relative path...".format(config_path))
-        config_path = os.path.join("config", "structure_type_{0}.json".format(structure_id))
-        
+# ===== ПОДКЛЮЧЕНИЕ ЧИСТЫХ ПОМОЩНИКОВ =====
+def _add_helpers_to_path():
+    """Добавляет каталог скрипта в sys.path, чтобы работал 'import sc_helpers'.
+
+    В SpaceClaim скрипт исполняется из редактора, и каталог скрипта не всегда попадает
+    в sys.path. Порядок поиска: каталог скрипта -> ANSYS_AUTOMATION_ROOT/src/SpaceClaim
+    -> cwd/src/SpaceClaim -> cwd.
+    """
+    candidates = []
     try:
-        with open(config_path, 'r') as f:
-            return json.load(f)
-    except Exception as e:
-        print("ERROR: Failed to load config: {0}".format(str(e)))
-        return None
+        candidates.append(os.path.dirname(os.path.abspath(__file__)))
+    except Exception:
+        pass
+    root = os.environ.get("ANSYS_AUTOMATION_ROOT")
+    if root:
+        candidates.append(os.path.join(root, "src", "SpaceClaim"))
+    candidates.append(os.path.join(os.getcwd(), "src", "SpaceClaim"))
+    candidates.append(os.getcwd())
+    for path in candidates:
+        if path and os.path.isdir(path) and path not in sys.path:
+            sys.path.insert(0, path)
+
+_add_helpers_to_path()
+
+try:
+    import sc_helpers
+except ImportError as exc:
+    print("CRITICAL ERROR: sc_helpers.py is not importable ({0}). "
+          "Script stopped: without helpers the structure ID and config cannot be resolved.".format(exc))
+    raise
 
 # ===== NAMED SELECTION CREATION METHODS (FROM ORIGINAL SCRIPT) =====
 def create_named_selections_for_unique_parts(doc):
@@ -38,17 +49,10 @@ def create_named_selections_for_unique_parts(doc):
     
     root_part = GetRootPart()
     allBodies = root_part.GetAllBodies()
-    unique_prefixes = set()
-    
-    for body in allBodies:
-        body_name = body.GetName()
-        if body_name:
-            prefix = body_name.split(' ')[0]
-            if prefix:
-                unique_prefixes.add(prefix)
-    
-    for base_name in unique_prefixes:
-        matching_bodies = [b for b in allBodies if b.GetName() and b.GetName().startswith(base_name)]
+    names = [sc_helpers.body_name(body) for body in allBodies]
+
+    for base_name in sc_helpers.unique_body_prefixes(names):
+        matching_bodies = sc_helpers.select_bodies_by_prefix(allBodies, base_name)
         if matching_bodies:
             matching_selection = Selection.CreateByObjects(matching_bodies)
             NamedSelection.Create(matching_selection, Selection.Empty()).CreatedNamedSelection.SetName(base_name)
@@ -84,13 +88,19 @@ def create_gu_fixed_lowest(doc):
             return None
             
     except Exception as ex:
-        print("Exception in create_gu_fixed_lowest():", str(ex))
+        print("Exception in create_gu_fixed_lowest():" + str(ex))
         return None
 
 def create_gu_fixed_perimeter(doc):
-    """Создает Named Selection 'gu_fixed' для граней по периметру тела 'podoporka' (упрощенная версия)"""
-    print("Logic for perimeter fixed support is not yet fully implemented in this version.")
-    return None
+    """Named Selection 'gu_fixed' по периметру — НЕ реализован (PLAN-MERGE Q8, ветвь A).
+
+    Единственная конструкция с criteria='perimeter' — 10558, и она вне минимального
+    прототипа. Реализовывать геометрию периметра «по догадке» нельзя, а тихо подменять
+    criteria на 'bottom_faces' запрещено: это меняет смысл конфига. Поэтому функция
+    честно останавливает скрипт с сообщением, а не возвращает None молча.
+    """
+    raise sc_helpers.PerimeterNotImplementedError(
+        sc_helpers.PERIMETER_NOT_IMPLEMENTED_MESSAGE)
 
 def create_gu_force_ns(doc):
     """Создает Named Selection 'gu_force' в центре масс труб"""
@@ -108,6 +118,12 @@ def create_gu_force_ns(doc):
         curvePoints = []
         for b in bodies:
             for edge in b.Edges:
+                # НЕ ПОДТВЕРЖДЕНО источником: 'GetChildren[ICurvePoint]()' — это
+                # IronPython-синтаксис вызова generic-метода GetChildren<ICurvePoint>().
+                # В RESEARCH-ANSYS-API.md §4 такого вызова нет (там описаны
+                # BodySelection/FaceSelection, NamedSelection.Create, GetAllBodies,
+                # body.Faces, body.Shape.Volume). Замену «по догадке» не ставлю:
+                # нужен источник (CHM SpaceClaim.Api.V19) или прогон в 21R1.
                 curvePoints.append(edge.GetChildren[ICurvePoint]())
                        
         sel = Selection.CreateByObjects(bodies)
@@ -134,7 +150,7 @@ def create_gu_force_ns(doc):
             return None
             
     except Exception as ex:
-        print("Exception in create_gu_force_ns():", str(ex))
+        print("Exception in create_gu_force_ns():" + str(ex))
         return None
 
 def create_gu_remote_disp_ns(doc):
@@ -145,7 +161,7 @@ def create_gu_remote_disp_ns(doc):
     try:
         root_part = GetRootPart()
         
-        truba_bodies = [body for body in root_part.GetAllBodies() if "truba" in body.GetName().lower()]
+        truba_bodies = sc_helpers.select_bodies_by_keywords(root_part.GetAllBodies(), ["truba"])
         
         if not truba_bodies:
             print("No pipe bodies found for 'gu_remote_disp'")
@@ -217,37 +233,58 @@ doc = DocumentHelper.GetActiveDocument()
 
 if doc:
     print("--- STARTING SPACECLAIM NAMED SELECTION SETUP ---")
-    config = load_structure_config("8946") # Default ID for now
-    
-    if config:
-        # 1. Создание Named Selections для уникальных частей (по умолчанию)
-        create_named_selections_for_unique_parts(doc)
-        
-        # 2. Создание специальных Named Selections на основе конфигурации
-        sc_proc_settings = config.get("spaceclaim_processing", {})
-        ns_definitions = sc_proc_settings.get("named_selections", [])
-        
-        for ns_def in ns_definitions:
-            name = ns_def["name"]
-            criteria = ns_def.get("criteria")
-            
-            if name == "gu_fixed":
-                if criteria == "bottom_faces" or criteria == "lowest":
-                    create_gu_fixed_lowest(doc)
-                elif criteria == "perimeter":
-                    create_gu_fixed_perimeter(doc) # Placeholder, needs full implementation
-                else:
-                    print("WARNING: Unknown criteria '{0}' for 'gu_fixed'".format(criteria))
-            elif name == "gu_force":
-                create_gu_force_ns(doc)
-            elif name == "gu_remote_disp":
-                create_gu_remote_disp_ns(doc)
-            # Добавьте сюда другие Named Selections, если они будут в JSON
-            else:
-                print("WARNING: Named Selection '{0}' from config is not handled by script.".format(name))
-                
-        print("Named Selection setup completed successfully!")
+
+    structure_id = None
+    try:
+        structure_id = sc_helpers.resolve_structure_id(STRUCTURE_ID, sc_helpers.document_name(doc))
+    except sc_helpers.StructureIdError as ex:
+        print("CRITICAL ERROR: " + str(ex))
+
+    if structure_id is None:
+        print("CRITICAL ERROR: structure ID is not resolved. Named Selection setup aborted.")
     else:
-        print("CRITICAL ERROR: Configuration file not loaded. Named Selection setup aborted.")
+        print("Structure ID: {0}".format(structure_id))
+        config = sc_helpers.load_structure_config(structure_id)
+
+        if config:
+            # 1. Создание Named Selections для уникальных частей (по умолчанию)
+            create_named_selections_for_unique_parts(doc)
+
+            # 2. Создание специальных Named Selections на основе конфигурации
+            sc_proc_settings = config.get("spaceclaim_processing", {})
+            ns_definitions = sc_proc_settings.get("named_selections", [])
+
+            for ns_def in ns_definitions:
+                name = ns_def["name"]
+                criteria = ns_def.get("criteria")
+
+                if name == "gu_fixed":
+                    try:
+                        handler = sc_helpers.fixed_criteria_handler(criteria)
+                    except ValueError as ex:
+                        # Без gu_fixed расчёт неверен: тихо пропускать нельзя.
+                        print("CRITICAL ERROR: " + str(ex))
+                        raise
+                    if handler == "lowest":
+                        create_gu_fixed_lowest(doc)
+                    elif handler == "perimeter":
+                        # 10558 вне прототипа (Q8, ветвь A): обработчик поднимает
+                        # PerimeterNotImplementedError с понятным сообщением.
+                        try:
+                            create_gu_fixed_perimeter(doc)
+                        except sc_helpers.PerimeterNotImplementedError as ex:
+                            print("CRITICAL ERROR: " + str(ex))
+                            raise
+                elif name == "gu_force":
+                    create_gu_force_ns(doc)
+                elif name == "gu_remote_disp":
+                    create_gu_remote_disp_ns(doc)
+                # Добавьте сюда другие Named Selections, если они будут в JSON
+                else:
+                    print("WARNING: Named Selection '{0}' from config is not handled by script.".format(name))
+
+            print("Named Selection setup completed successfully!")
+        else:
+            print("CRITICAL ERROR: Configuration file not loaded. Named Selection setup aborted.")
 else:
     print("Document not found!")

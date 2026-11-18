@@ -22,7 +22,8 @@ if not PROJECT_ROOT:
         if os.path.exists(os.path.join(cwd, "src")):
             PROJECT_ROOT = cwd
     if not PROJECT_ROOT:
-        PROJECT_ROOT = os.path.join(os.path.expanduser("~"), "source", "repos", "ANSYSautomation2")
+        print("ERROR: cannot determine project root; set ANSYS_AUTOMATION_ROOT")
+        raise SystemExit(1)
 
 src_path = Path.Combine(PROJECT_ROOT, "src")
 if src_path not in sys.path:
@@ -62,6 +63,5 @@ try:
     print("ALL MANAGERS LOADED SUCCESSFULLY")
 
 except Exception as e:
-    import traceback
+    # Модуль работы со стеком в IronPython недоступен (RULES.md); сообщение и так видно в логе ANSYS.
     print("ERROR DURING INITIALIZATION: " + str(e))
-    print(traceback.format_exc())

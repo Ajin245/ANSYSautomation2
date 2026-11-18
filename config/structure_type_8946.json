@@ -6,39 +6,198 @@
   },
   "loads": {
     "08": {
-      "nominal_forces": {
-        "fx": 1000,
-        "fy": 1700,
-        "fz": -3300
+      "cases": {
+        "НУЭ": {
+          "fx": 1000,
+          "fy": 1700,
+          "fz": -3300
+        },
+        "НУЭ+ПЗ": {
+          "fx": 1500,
+          "fy": 2550,
+          "fz": -4950
+        }
       }
     },
     "09": {
-      "nominal_forces": {
-        "fx": 1100,
-        "fy": 1800,
-        "fz": -3600
+      "cases": {
+        "НУЭ": {
+          "fx": 1100,
+          "fy": 1800,
+          "fz": -3600
+        },
+        "НУЭ+ПЗ": {
+          "fx": 1650,
+          "fy": 2700,
+          "fz": -5400
+        }
       }
     },
-	"10": {
-      "nominal_forces": {
-        "fx": 1200,
-        "fy": 2000,
-        "fz": -3900
+    "10": {
+      "cases": {
+        "НУЭ": {
+          "fx": 1200,
+          "fy": 2000,
+          "fz": -3900
+        },
+        "НУЭ+ПЗ": {
+          "fx": 1800,
+          "fy": 3000,
+          "fz": -5850
+        }
+      }
+    },
+    "11": {
+      "cases": {
+        "НУЭ": {
+          "fx": 1200,
+          "fy": 2100,
+          "fz": -4100
+        },
+        "НУЭ+ПЗ": {
+          "fx": 1800,
+          "fy": 3150,
+          "fz": -6150
+        }
+      }
+    },
+    "12": {
+      "cases": {
+        "НУЭ": {
+          "fx": 2300,
+          "fy": 3900,
+          "fz": -7800
+        },
+        "НУЭ+ПЗ": {
+          "fx": 3450,
+          "fy": 5850,
+          "fz": -11700
+        }
+      }
+    },
+    "13": {
+      "cases": {
+        "НУЭ": {
+          "fx": 2700,
+          "fy": 4500,
+          "fz": -9000
+        },
+        "НУЭ+ПЗ": {
+          "fx": 4050,
+          "fy": 6750,
+          "fz": -13500
+        }
+      }
+    },
+    "14": {
+      "cases": {
+        "НУЭ": {
+          "fx": 2900,
+          "fy": 4800,
+          "fz": -9600
+        },
+        "НУЭ+ПЗ": {
+          "fx": 4350,
+          "fy": 7200,
+          "fz": -14400
+        }
+      }
+    },
+    "15": {
+      "cases": {
+        "НУЭ": {
+          "fx": 3600,
+          "fy": 6000,
+          "fz": -12000
+        },
+        "НУЭ+ПЗ": {
+          "fx": 5400,
+          "fy": 9000,
+          "fz": -18000
+        }
+      }
+    },
+    "16": {
+      "cases": {
+        "НУЭ": {
+          "fx": 9000,
+          "fy": 15000,
+          "fz": -30000
+        },
+        "НУЭ+ПЗ": {
+          "fx": 13500,
+          "fy": 22500,
+          "fz": -45000
+        }
+      }
+    },
+    "19": {
+      "cases": {
+        "НУЭ": {
+          "fx": 14400,
+          "fy": 24000,
+          "fz": -48000
+        },
+        "НУЭ+ПЗ": {
+          "fx": 21600,
+          "fy": 36000,
+          "fz": -72000
+        }
+      }
+    },
+    "20": {
+      "cases": {
+        "НУЭ": {
+          "fx": 18000,
+          "fy": 30000,
+          "fz": -60000
+        },
+        "НУЭ+ПЗ": {
+          "fx": 27000,
+          "fy": 45000,
+          "fz": -90000
+        }
+      }
+    },
+    "21": {
+      "cases": {
+        "НУЭ": {
+          "fx": 23400,
+          "fy": 39000,
+          "fz": -78000
+        },
+        "НУЭ+ПЗ": {
+          "fx": 35100,
+          "fy": 58500,
+          "fz": -117000
+        }
+      }
+    },
+    "22": {
+      "cases": {
+        "НУЭ": {
+          "fx": 24300,
+          "fy": 40500,
+          "fz": -81000
+        },
+        "НУЭ+ПЗ": {
+          "fx": 36450,
+          "fy": 60750,
+          "fz": -121500
+        }
       }
     }
   },
-  "torque_nm": {
-    "8": 11.8,
-    "10": 18.5,
-    "12": 31.1,
-    "16": 85.8,
-    "20": 151.7,
-    "24": 479.5,
-    "30": 888
-  },
   "boundary_conditions": {
     "fixed_support": "gu_fixed",
-    "remote_displacement": "gu_remote_disp"
+    "remote_displacement": {
+      "ns_name": "gu_remote_disp",
+      "rotation": {
+        "rx": 0,
+        "ry": 0,
+        "rz": 0
+      }
+    }
   },
   "spaceclaim_processing": {
     "clean_geometry": true,
@@ -48,5 +207,49 @@
         "criteria": "bottom_faces"
       }
     ]
+  },
+  "support_type": "sliding_guide",
+  "support_types": {
+    "sliding_guide": {
+      "description": "Опора скользящая направляющая",
+      "friction_coefficient": 0.3,
+      "pairs": [
+        {
+          "a": [
+            "rebro"
+          ],
+          "b": [
+            "*"
+          ],
+          "type": "Bonded",
+          "interface_treatment": "AdjustToTouch"
+        },
+        {
+          "a": [
+            "opora_niz"
+          ],
+          "b": [
+            "osnovanie"
+          ],
+          "type": "Bonded",
+          "interface_treatment": "AdjustToTouch"
+        },
+        {
+          "a": [
+            "opora_niz"
+          ],
+          "b": [
+            "opora"
+          ],
+          "type": "Bonded",
+          "interface_treatment": "AdjustToTouch"
+        }
+      ],
+      "default": {
+        "type": "Frictional",
+        "friction_coefficient": 0.3,
+        "interface_treatment": "AdjustToTouch"
+      }
+    }
   }
 }

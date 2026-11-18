@@ -19,7 +19,7 @@
     "frictionless_support": "gu_frictionless",
     "compression_only": "gu_compression"
   },
-  "loads": {
+  "load_named_selections": {
     "force": "gu_force",
     "moment": "gu_moment", 
     "pressure": "gu_pressure",
@@ -43,6 +43,9 @@
       "default": "Stress Intensity"
     },
     "stress_averaging": "ElementalMean"
+  },
+  "output": {
+    "results_csv": "results.csv"
   },
   "units": {
     "force": "N",

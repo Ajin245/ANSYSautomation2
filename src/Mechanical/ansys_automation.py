@@ -38,6 +38,7 @@ def run_automation():
     from Mechanical.validation_manager import ValidationManager
     from Mechanical.result_manager import ResultManager
 
+    context = None
     try:
         # Импортируем Quantity из Ansys.Core.Units
         from Ansys.Core.Units import Quantity
@@ -54,6 +55,14 @@ def run_automation():
         context = ProjectContext(ExtAPI, Quantity, ansys_enums)
         context.log.info(u"Начало работы...")
 
+        # Повторный прогон не должен дублировать ГУ/нагрузки/сетку: Mechanical
+        # держит модель в SYS.mechdb, и объекты прошлого запуска остаются.
+        from Mechanical import utils as mei_utils
+        removed = mei_utils.purge_automatic_objects(context.analysis, context.log)
+        removed += mei_utils.purge_automatic_objects(context.model.Mesh, context.log)
+        if removed:
+            context.log.info(u"Удалено объектов прошлого прогона: {0}".format(removed))
+
         contact_mgr = ContactManager(context)
         mesh_mgr = MeshManager(context)
         analysis_mgr = AnalysisManager(context)
@@ -62,16 +71,31 @@ def run_automation():
     
         contact_mgr.setup_contacts()
         mesh_mgr.apply_mesh_settings()
+        mesh_mgr.generate_mesh()
         analysis_mgr.apply_boundary_conditions_and_loads()
         validation_mgr.validate_model_setup()
         result_mgr.setup_plot_results()
 
         ExtAPI.DataModel.Project.SaveProjectBeforeSolution = True
-    
-        context.log.info(u"Автоматизация успешно завершена.")
+
+        # Шаг 4 конвейера (FR-11, PLAN-MERGE §1.2) здесь НЕ выполняется: до
+        # решения ``Solution`` пуст, и CSV получил бы один заголовок. В batch
+        # журнал вторым ``SendCommand`` запускает ``solve_and_export.py``:
+        # он решает модель и выполняет ``export_results.py``
+        # (``src/Mechanical/export_results.py``); при ручном прогоне в GUI
+        # скрипт ``export_results.py`` запускается отдельно после расчёта.
+        context.log.info(
+            u"Настройка завершена; CSV выгружается после решения "
+            u"(export_results.py).")
 
     except Exception as e:
-        # Убираем использование traceback, раз он недоступен
-        print(u"Критическая ошибка (без traceback):{0}".format(str(e)))
+        # Верхнеуровневый сбой не глотаем: batch-обвязка этапа 6a должна
+        # отличать успех от провала, поэтому пишем явный маркер и пробрасываем
+        # исключение (в ANSYS это видно как прерванный скрипт с traceback).
+        message = u"AUTOMATION-FAILED: {0}".format(e)
+        if context is not None:
+            context.log.error(message)
+        print(message)
+        raise
 
 run_automation()

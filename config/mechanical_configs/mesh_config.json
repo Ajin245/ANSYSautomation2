@@ -3,19 +3,19 @@
     "mbolt": {
       "meshCoef": 6.7,
       "meshMethod": "Sweep",
-	  "meshAlgorithm" : "Axisymmetric",
+      "meshAlgorithm": "Axisymmetric",
       "elementOrder": "Quadratic"
     },
     "mgaika": {
       "meshCoef": 7.2,
       "meshMethod": "Sweep",
-	  "meshAlgorithm" : "Axisymmetric",  
+      "meshAlgorithm": "Axisymmetric",
       "elementOrder": "ProgramControlled"
     },
     "shaiba": {
       "meshCoef": 2.0,
       "meshMethod": "Sweep",
-	  "meshAlgorithm" : "Axisymmetric",
+      "meshAlgorithm": "ProgramControlled",
       "elementOrder": "ProgramControlled"
     },
     "kruk": {
@@ -30,7 +30,7 @@
     },
     "opora_niz": {
       "meshCoef": 6.0,
-      "meshMethod": "MultiZone", 
+      "meshMethod": "MultiZone",
       "elementOrder": "Quadratic"
     },
     "opora_verh": {
@@ -42,8 +42,8 @@
       "meshCoef": 4.08,
       "meshMethod": "MultiZone",
       "elementOrder": "Quadratic",
-	  "surfaceMeshMethod" : "Uniform",
-	  "freeMeshType":"HexaCore"
+      "surfaceMeshMethod": "Uniform",
+      "freeMeshType": "HexaCore"
     },
     "shponka": {
       "meshCoef": 4.0,
@@ -63,17 +63,20 @@
     "shov": {
       "meshCoef": 1.0,
       "meshMethod": "Sweep",
-      "elementOrder": "ProgramControlled"
+      "elementOrder": "ProgramControlled",
+      "meshAlgorithm": "ProgramControlled"
     },
     "shov_truba": {
       "meshCoef": 1.0,
       "meshMethod": "Sweep",
-      "elementOrder": "ProgramControlled"
+      "elementOrder": "ProgramControlled",
+      "meshAlgorithm": "ProgramControlled"
     },
     "flanec": {
       "meshCoef": 3.0,
       "meshMethod": "Sweep",
-      "elementOrder": "ProgramControlled"
+      "elementOrder": "ProgramControlled",
+      "meshAlgorithm": "ProgramControlled"
     },
     "korpus": {
       "meshCoef": 4.0,
@@ -81,19 +84,20 @@
       "elementOrder": "Quadratic"
     },
     "rebro": {
+      "meshCoef": 3.0,
+      "meshMethod": "MultiZone",
+      "elementOrder": "Quadratic"
+    },
+    "upor": {
       "meshCoef": 3,
       "meshMethod": "MultiZone",
       "elementOrder": "ProgramControlled"
     },
-	"upor": {
-     "meshCoef": 3, 
-     "meshMethod": "MultiZone",
-     "elementOrder": "ProgramControlled"
-	},
-	"podkladka": {
+    "podkladka": {
       "meshCoef": 1,
       "meshMethod": "MultiZone",
       "elementOrder": "ProgramControlled"
     }
-  }
+  },
+  "use_mesh_methods": true
 }
