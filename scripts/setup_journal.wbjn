@@ -3,10 +3,13 @@
 
 Запуск (окно Workbench остаётся открытым, Mechanical показывает настроенную модель):
 
-    runwb2 -I -F "<копия>.wbpj" -R "C:\\Work\\ansys-automation\\scripts\\setup_journal.wbjn"
+    runwb2 -F "<копия>.wbpj" -R "C:\\Work\\ansys-automation\\scripts\\setup_journal.wbjn"
 
-``-I`` обязателен: без него Workbench закрывается по окончании журнала, и модель
-посмотреть уже нечем.
+``-I`` НЕ используется: живой прогон 2026-11-18 показал, что в интерактивном
+режиме ``SendCommand`` до Mechanical не доходит (нагрузка не начинала
+исполняться). Без ``-I`` команда доставляется. Чтобы модель было чем показать,
+журнал в конце сохраняет проект (``Save``) — настроенную копию открывают потом
+обычным ``runwb2 -F``.
 
 Что делает: один ``SendCommand`` в Mechanical выполняет
 ``src/Mechanical/ansys_automation.py`` — контакты, сетка, ГУ/нагрузки, валидация,
@@ -136,5 +139,17 @@ while time.time() < deadline:
             w(OUT, "setup finished")
             break
         w(OUT, "waiting: %d bytes" % len(text))
+
+# Сохранить настроенный проект: без этого закрытие окна выбрасывает настройку.
+try:
+    project_path = os.environ.get("ANSYS_AUTOMATION_PROJECT", "")
+    if project_path:
+        Save(FilePath=project_path, Overwrite=True)
+        w(OUT, "save ok: %s" % project_path)
+    else:
+        w(OUT, "save skipped: project path unknown")
+except Exception:
+    import traceback as _tb
+    w(OUT, "save FAILED: " + _tb.format_exc())
 
 w(OUT, "journal end")
